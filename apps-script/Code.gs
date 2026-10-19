@@ -171,6 +171,15 @@ function fmt_(date, pattern) {
   return Utilities.formatDate(date, CONFIG.timezone, pattern);
 }
 
+var HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
+/** Gabung tanggal pengajuan (Timestamp) dengan jam menjadi teks HARI/TANGGAL/JAM. */
+function composeJam_(stamp, jam) {
+  var d = parseDate_(stamp);
+  if (!d) return '';
+  return HARI[d.getDay()] + ', ' + fmt_(d, 'dd/MM/yyyy') + ' ' + jam;
+}
+
 /* ============================================================================
    PEMETAAN KOLOM BERSAMA
    ============================================================================
@@ -190,7 +199,7 @@ var COLS = {
       { key: 'ijn',       aliases: ['ijn'],                  contains: ['ijn'] },
       { key: 'tujuan',    aliases: ['tujuan'],               contains: ['tujuan'] },
       { key: 'tglJam',    aliases: ['haritanggaljam', 'haritgljam', 'haritanggal'] },
-      { key: 'tanggal',   aliases: ['tanggal'] },
+      { key: 'tanggal',   aliases: ['tanggal'], optional: true },
       { key: 'nopol',     aliases: ['nopol', 'platno', 'platnomor', 'nopolkendaraan'], contains: ['nopol'] },
       { key: 'keperluan', aliases: ['keperluan'] },
       { key: 'status',    contains: ['status'] },
@@ -209,7 +218,7 @@ var COLS = {
       { key: 'nama',             aliases: ['nama', 'namapeminjam'], contains: ['nama'] },
       { key: 'kontak',           aliases: ['kontak', 'nomerkontak', 'hp', 'nohp'], contains: ['kontak'] },
       { key: 'tglPinjam',        aliases: ['tglpeminjaman', 'tglpinjam', 'peminjaman'], contains: ['peminjaman'] },
-      { key: 'tglKembali',       aliases: ['tglpengembalian', 'pengembalian', 'tglkembali', 'rencanakembali'] },
+      { key: 'tglKembali',       aliases: ['tglpengembalian', 'pengembalian', 'tglkembali', 'rencanakembali'], contains: ['pengembalian'] },
       { key: 'keperluan',        aliases: ['keperluan'] },
       { key: 'status',           contains: ['status'], create: 'STATUS' },
       { key: 'tglKembaliAktual', aliases: ['tglkembaliaktual', 'tglkembalianaktual', 'tglpengembalianaktual', 'kembalianaktual'], contains: ['aktual'], create: 'TGL KEMBALI AKTUAL' },
@@ -236,6 +245,7 @@ function cols_(key) {
   var lastCol = sh.getLastColumn();
   var head = lastCol > 0 ? sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0] : [];
   var out = { fields: {}, groups: {} };
+  var current = '';
 
   for (var i = 0; i < head.length; i++) {
     var n = normalize_(head[i]);
@@ -246,7 +256,8 @@ function cols_(key) {
       var rep = spec.repeat[r];
       var m = n.match(rep.re);
       if (!m) continue;
-      var num = m[1] ? m[1] : '1';
+      if (m[1]) current = m[1];
+      var num = m[1] || current || '1';
       var g = out.groups[num] || (out.groups[num] = {});
       if (!g[rep.key]) g[rep.key] = col;
     }
@@ -306,6 +317,7 @@ function readAll_(key) {
 function transportItem_(row, colsMap, rowId) {
   var tanggal = val_(row, colsMap, 'tanggal').trim();
   var stamp = val_(row, colsMap, 'timestamp').trim();
+  var stampDate = parseDate_(stamp);
   var dateObj = parseDate_(tanggal) || parseDate_(stamp) || parseDate_(val_(row, colsMap, 'tglJam'));
 
   // Nomor dari kolom NO.; kalau kosong baru dihitung dari baris & bulan.
@@ -320,6 +332,7 @@ function transportItem_(row, colsMap, rowId) {
     sig: sig_(row, colsMap, 'transport'),
     noSurat: no,
     timestamp: stamp || tanggal || '-',
+    tglPengajuan: stampDate ? fmt_(stampDate, 'dd/MM/yyyy') : '-',
     nama: dash_(val_(row, colsMap, 'nama')),
     dept: dash_(val_(row, colsMap, 'dept')),
     ijn: dash_(val_(row, colsMap, 'ijn')),
@@ -454,7 +467,7 @@ function missingFields_(key) {
   var colsMap = cols_(key);
   var missing = [];
   spec.fields.forEach(function (f) {
-    if (f.key === 'no') return;
+    if (f.key === 'no' || f.optional) return;
     if (!colsMap.fields[f.key]) missing.push(f.key);
   });
   return missing;
@@ -520,14 +533,26 @@ function updateRequest_(body) {
   }
 
   var patch = {};
-  ['nama', 'dept', 'ijn', 'tujuan', 'tglJam', 'tanggal', 'nopol', 'keperluan',
+  ['no', 'noSurat', 'nama', 'dept', 'ijn', 'tujuan', 'tglJam', 'tanggal', 'nopol', 'keperluan',
    'status', 'pemohon', 'disetujui', 'driver'].forEach(function (k) {
     if (body[k] !== undefined && body[k] !== null) patch[k] = String(body[k]).trim();
   });
+  if (patch.noSurat !== undefined) patch.no = patch.noSurat;
+  delete patch.noSurat;
   if (patch.nopol) patch.nopol = patch.nopol.toUpperCase();
   if (patch.status) patch.status = normalizeStatus_(patch.status);
+  else delete patch.status;
+
+  var jam = String(body.jam || '').trim();
+  if (jam) {
+    var jm = /^(\d{1,2}):(\d{2})$/.exec(jam);
+    if (!jm) return fail_('Format jam harus HH:MM.');
+    jam = ('0' + jm[1]).slice(-2) + ':' + jm[2];
+  }
 
   var missing = [];
+  var optional = {};
+  COLS.transport.fields.forEach(function (f) { if (f.optional) optional[f.key] = 1; });
 
   withLock_(function () {
     var sh = sheet_('transport');
@@ -542,12 +567,19 @@ function updateRequest_(body) {
       }
     }
 
+    if (jam) {
+      var stampCol = colsMap.fields.timestamp;
+      var stamp = stampCol ? sh.getRange(rowId, stampCol).getDisplayValues()[0][0] : '';
+      var composed = composeJam_(stamp, jam);
+      if (composed) patch.tglJam = composed;
+    }
+
     // Tulis kolom satu per satu supaya rumus di kolom lain tetap utuh.
     Object.keys(patch).forEach(function (k) {
       var col = colsMap.fields[k];
       if (col) {
         sh.getRange(rowId, col).setValue(patch[k]);
-      } else {
+      } else if (!optional[k]) {
         missing.push(k);
       }
     });
@@ -688,6 +720,7 @@ function saveInventaris_(body) {
       colsMap.fields[fieldKey] = newCol;
     }
 
+    if (body.noDok !== undefined) put('no', String(body.noDok).trim());
     put('status', normalizeInvStatus_(body.status));
     put('tglKembaliAktual', String(body.tglKembaliAktual || '').trim());
     put('catatan', String(body.catatan || '').trim());
@@ -978,7 +1011,7 @@ function diagnose_() {
     COLS[key].fields.forEach(function (f) {
       if (colsMap.fields[f.key]) matched.push(f.key + ' (kolom ' + colsMap.fields[f.key] + ')');
       else if (f.create) willCreate.push(f.create);
-      else missing.push(f.key);
+      else if (!f.optional) missing.push(f.key);
     });
 
     var groups = Object.keys(colsMap.groups).sort(function (a, b) { return Number(a) - Number(b); });

@@ -87,7 +87,7 @@
   box-shadow: -6px 0 8px -6px rgb(15 23 42 / 0.12);
 }
 
-#print-area:not(.hidden),
+#print-transport:not(.hidden),
 #print-inventaris:not(.hidden) {
   position: absolute;
   inset: 0 auto auto 0;
@@ -98,8 +98,8 @@
   body * {
     visibility: hidden !important;
   }
-  #print-area:not(.hidden),
-  #print-area:not(.hidden) *,
+  #print-transport:not(.hidden),
+  #print-transport:not(.hidden) *,
   #print-inventaris:not(.hidden),
   #print-inventaris:not(.hidden) * {
     visibility: visible !important;

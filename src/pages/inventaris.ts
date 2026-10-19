@@ -245,11 +245,6 @@ export function openDrawer(rowId: number): void {
   drawer.open({
     title: 'Detail & Pengembalian Barang',
     body: `
-      <div class="rounded-xl border border-primary-100 bg-primary-50 px-4 py-3">
-        <div class="text-[11px] font-bold tracking-wide text-primary-600 uppercase">No. Dokumen</div>
-        <div class="text-base font-bold text-primary-800 break-words">${esc(item.noDok)}</div>
-      </div>
-
       <div class="grid grid-cols-2 gap-4">
         ${field('Nama Peminjam', item.nama)}
         ${field('Kontak', item.kontak)}
@@ -306,6 +301,7 @@ export async function save(rowId: number): Promise<void> {
     await api.saveInventaris({
       rowId,
       sig: item.sig,
+      noDok: patch.noDok ?? '',
       status: patch.status || 'Selesai',
       tglKembaliAktual: patch.tglKembaliAktual || isoToSlash(todayISO()),
       catatan: patch.catatan ?? '',

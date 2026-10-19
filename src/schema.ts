@@ -41,6 +41,7 @@ export interface TransportItem {
   sig: string;
   noSurat: string;
   timestamp: string;
+  tglPengajuan: string;
   nama: string;
   dept: string;
   ijn: string;
@@ -65,12 +66,12 @@ export type TransportKey = keyof TransportItem & string;
  * memastikan nilainya selalu string.
  */
 export type EditableTransportKey =
+  | 'noSurat'
   | 'nama'
   | 'dept'
   | 'ijn'
   | 'tujuan'
-  | 'tglJam'
-  | 'tanggal'
+  | 'jam'
   | 'nopol'
   | 'keperluan'
   | 'status'
@@ -78,7 +79,7 @@ export type EditableTransportKey =
   | 'disetujui'
   | 'driver';
 
-export type FieldType = 'text' | 'textarea' | 'date' | 'select';
+export type FieldType = 'text' | 'textarea' | 'date' | 'time' | 'select';
 
 export interface FieldDef<K extends string = string> {
   key: K;
@@ -108,6 +109,12 @@ const STATUS_OPTIONS = [
  */
 export const TRANSPORT_FIELDS: readonly FieldDef<EditableTransportKey>[] = [
   {
+    key: 'noSurat',
+    label: 'No. Surat',
+    half: true,
+    placeholder: '001/X/FCL/2026',
+  },
+  {
     key: 'nama',
     label: 'Nama',
     half: true,
@@ -118,12 +125,11 @@ export const TRANSPORT_FIELDS: readonly FieldDef<EditableTransportKey>[] = [
   { key: 'ijn', label: 'IJN', half: true, placeholder: '001234' },
   { key: 'tujuan', label: 'Tujuan', required: true, placeholder: 'Kota tujuan' },
   {
-    key: 'tglJam',
-    label: 'Hari / Tanggal / Jam',
+    key: 'jam',
+    label: 'Jam Pemakaian',
+    type: 'time',
     half: true,
-    placeholder: 'Contoh: Senin, 08:00',
   },
-  { key: 'tanggal', label: 'Tanggal', type: 'date', half: true },
   {
     key: 'nopol',
     label: 'Plat No.',
@@ -145,7 +151,7 @@ export const TRANSPORT_COLUMNS = [
   'ijn',
   'tujuan',
   'tglJam',
-  'tanggal',
+  'tglPengajuan',
   'nopol',
   'keperluan',
   'status',
@@ -185,12 +191,18 @@ export interface InventarisItem {
 export type InventarisKey = keyof InventarisItem & string;
 
 /** Field inventaris yang bisa diubah lewat drawer pengembalian. */
-export type EditableInventarisKey = 'status' | 'tglKembaliAktual' | 'catatan';
+export type EditableInventarisKey = 'noDok' | 'status' | 'tglKembaliAktual' | 'catatan';
 
 export const KONDISI_OPTIONS = ['Baik', 'Rusak', 'Hilang'] as const;
 
 /** Field inventaris yang bisa diubah lewat drawer pengembalian. */
 export const INVENTARIS_FIELDS: readonly FieldDef<EditableInventarisKey>[] = [
+  {
+    key: 'noDok',
+    label: 'No. Dokumen',
+    half: true,
+    placeholder: '001',
+  },
   {
     key: 'status',
     label: 'Status',

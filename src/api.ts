@@ -110,6 +110,14 @@ async function write<T>(action: string, body: Record<string, unknown>): Promise<
   return parsed.data as T;
 }
 
+async function writeParams<T>(action: string, query: Query): Promise<T> {
+  const url = buildUrl(action, { ...query, _t: Date.now() });
+  const res = await fetch(url);
+  const parsed = await parse(res, action);
+  if (parsed.warning) console.warn(`[${action}] ${parsed.warning}`);
+  return parsed.data as T;
+}
+
 /** Buang cache pembacaan yang berawalan aksi tertentu. */
 export function invalidate(prefix: string): void {
   for (const key of cache.keys()) {
@@ -157,19 +165,20 @@ export const api = {
     write('updateRequest', body).then(() => invalidate('getRequests')),
 
   updateStatus: (rowId: number, nopol: string, status: string) =>
-    write('updateRequestStatus', { rowId, nopol, status }).then(() => invalidate('getRequests')),
+    writeParams('updateRequestStatus', { rowId, nopol, status }).then(() => invalidate('getRequests')),
 
   deleteRequest: (rowId: number) =>
-    write('deleteRequest', { rowId }).then(() => invalidate('getRequests')),
+    writeParams('deleteRequest', { rowId }).then(() => invalidate('getRequests')),
 
   /** Kirim PDF form A5 ke alamat tujuan yang diatur di Code.gs. Maksimal 10. */
-  sendEmail: (rowIds: number[]) => write('sendEmail', { rowIds: rowIds.join(',') }),
+  sendEmail: (rowIds: number[]) => writeParams('sendEmail', { rowIds: rowIds.join(',') }),
 
   listInventaris: (): Promise<InventarisItem[]> => read('getInventarisData'),
 
   saveInventaris: (body: {
     rowId: number;
     sig: string;
+    noDok: string;
     status: string;
     tglKembaliAktual: string;
     catatan: string;

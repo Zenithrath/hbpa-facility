@@ -9,6 +9,7 @@ const APP = path.join(__dirname, '..');
 const TRANSPORT = [
   {
     rowId: 3, sig: 'a|b|c', noSurat: 'TR/202610/001', timestamp: '2026-10-19 10:00:00',
+    tglPengajuan: '19/10/2026',
     nama: 'Budi', dept: 'Produksi', ijn: '001234', tujuan: 'Balikpapan',
     tglJam: 'Senin, 08:00', tanggal: '19/10/2026', nopol: 'KT 8107 YV',
     keperluan: 'KOperasi', status: 'Pending', pemohon: '-', disetujui: '-',
@@ -16,6 +17,7 @@ const TRANSPORT = [
   },
   {
     rowId: 2, sig: 'd|e|f', noSurat: 'TR/202610/002', timestamp: '2026-10-18 09:00:00',
+    tglPengajuan: '18/10/2026',
     nama: 'Dewi', dept: 'Sdm', ijn: '009876', tujuan: 'Tarakan',
     tglJam: 'Selasa, 09:00', tanggal: '18/10/2026', nopol: 'KT 1234 AB',
     keperluan: 'Rapat', status: 'Disetujui', pemohon: 'Dewi', disetujui: 'Sari',
@@ -54,15 +56,19 @@ const RESPONSES = {
   getInventarisData: INVENTARIS,
   updateRequest: { message: 'Tersimpan.' },
   saveInventaris: { message: 'Tersimpan.' },
+  sendEmail: { sent: 1 },
+  deleteRequest: { message: 'Dihapus.' },
 };
 
 const calls = [];
+const urls = [];
 
 const tick = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 
 function fakeFetch(url) {
   const action = new URL(url).searchParams.get('action');
   calls.push(action);
+  urls.push(url);
   const body = RESPONSES[action] ?? { success: false, message: `aksi tidak dikenal: ${action}` };
   return Promise.resolve({
     ok: true,
@@ -158,7 +164,7 @@ async function run() {
   eq('judul', doc.getElementById('title').textContent, 'Daftar Permintaan Transportasi');
   eq('jumlah baris tabel', doc.querySelectorAll('#tbody tr').length, 2);
   eq('jumlah header kolom', doc.querySelectorAll('#thead th').length, 11);
-  eq('pilihan divisi terisi', doc.getElementById('f-dept').options.length, 4);
+  eq('pilihan divisi terisi', doc.getElementById('filter-dept').options.length, 4);
   ok('nomor surat tampil', text().includes('TR/202610/001'));
 
   console.log('\n--- filter & pencarian ---');
@@ -168,7 +174,7 @@ async function run() {
   eq('cari "dewi"', doc.querySelectorAll('#tbody tr').length, 1);
   q.value = '';
   q.dispatchEvent(new window.Event('input', { bubbles: true }));
-  const sel = doc.getElementById('f-status');
+  const sel = doc.getElementById('filter-status');
   sel.value = 'Pending';
   sel.dispatchEvent(new window.Event('change', { bubbles: true }));
   eq('filter Pending', doc.querySelectorAll('#tbody tr').length, 1);
@@ -179,17 +185,27 @@ async function run() {
   doc.querySelector('#tbody tr').click();
   await tick(60);
   ok('drawer terbuka', doc.getElementById('drawer').classList.contains('open'));
-  ok('nomor surat tampil di drawer', doc.getElementById('drawer-body').textContent.includes('TR/202610/001'));
+  ok('nomor surat tampil di drawer', doc.getElementById('f-noSurat').value === 'TR/202610/001');
   eq('jumlah input di drawer', doc.querySelectorAll('#drawer-body input, #drawer-body select, #drawer-body textarea').length, 12);
-  const tgl = doc.getElementById('f-tanggal');
-  eq('tanggal jadi format ISO di form', tgl && tgl.value, '2026-10-19');
+  const jam = doc.getElementById('f-jam');
+  eq('jam terisi dari HARI/TANGGAL/JAM', jam && jam.value, '08:00');
   const ids = [...doc.querySelectorAll('#drawer-body [id^="f-"]')].map((e) => e.id);
   eq('tidak ada id form duplikat', ids.length, new Set(ids).size);
 
   doc.getElementById('f-nopol').value = 'kt 9999 zz';
+  doc.getElementById('f-noSurat').value = '009/X/FCL/2026';
+  doc.getElementById('f-jam').value = '10:30';
+  doc.getElementById('filter-status').value = 'Disetujui';
+  doc.getElementById('filter-dept').value = 'GA';
   doc.querySelector('[data-action="save"]').click();
   await tick();
   ok('updateRequest benar-benar dipanggil', calls.includes('updateRequest'));
+  const updUrl = [...urls].reverse().find((u) => u.includes('action=updateRequest')) || '';
+  const sent = JSON.parse(new URL(updUrl).searchParams.get('data'));
+  eq('no. surat dari drawer', sent.noSurat, '009/X/FCL/2026');
+  eq('jam dari drawer', sent.jam, '10:30');
+  eq('status dari drawer, bukan dari filter', sent.status, 'Pending');
+  eq('dept dari drawer, bukan dari filter', sent.dept, 'Produksi');
 
   console.log('\n--- halaman Inventaris ---');
   doc.querySelector('[data-page="inventaris"]').click();
@@ -206,6 +222,7 @@ async function run() {
   eq('ID kondisi comeback unik (bug lama)', kondisiIds, ['k-1', 'k-2']);
   ok('tidak ada id "undefined"', !doc.getElementById('drawer-body').innerHTML.includes('undefined'));
   doc.getElementById('k-1').value = 'Rusak';
+  doc.getElementById('f-noDok').value = 'PB/007';
   doc.getElementById('f-status').value = 'Selesai';
   doc.getElementById('f-tglKembaliAktual').value = '';
   doc.getElementById('f-status').dispatchEvent(new window.Event('change', { bubbles: true }));
@@ -213,6 +230,9 @@ async function run() {
   doc.querySelector('[data-action="inv-save"]').click();
   await tick();
   ok('saveInventaris benar-benar dipanggil', calls.includes('saveInventaris'));
+  const invUrl = [...urls].reverse().find((u) => u.includes('action=saveInventaris')) || '';
+  const invSent = JSON.parse(new URL(invUrl).searchParams.get('data'));
+  eq('no dokumen dari drawer', invSent.noDok, 'PB/007');
 
   console.log('\n--- cetak ---');
   doc.querySelector('[data-page="transport"]').click();
@@ -221,6 +241,25 @@ async function run() {
   await tick(60);
   ok('area cetak transport tampil', !doc.getElementById('print-transport').classList.contains('hidden'));
   ok('nomor surat masuk ke area cetak', doc.getElementById('p-nosurat').textContent.length > 0);
+
+  console.log('\n--- email & hapus ---');
+  doc.querySelector('[data-page="overview"]').click();
+  await tick();
+  doc.querySelector('#email-list input[type="checkbox"]').click();
+  doc.querySelector('[data-action="send-selected"]').click();
+  await tick();
+  ok('sendEmail dipanggil', calls.includes('sendEmail'));
+  const mailUrl = urls.find((u) => u.includes('action=sendEmail')) || '';
+  ok('rowIds dikirim sebagai parameter langsung', /[?&]rowIds=\d+(&|$)/.test(mailUrl));
+  ok('rowIds tidak dibungkus data JSON', !/[?&]data=/.test(mailUrl));
+
+  doc.querySelector('[data-page="transport"]').click();
+  await tick();
+  doc.querySelector('#tbody [data-action="delete"]').click();
+  await tick();
+  ok('deleteRequest dipanggil', calls.includes('deleteRequest'));
+  const delUrl = urls.find((u) => u.includes('action=deleteRequest')) || '';
+  ok('rowId hapus dikirim langsung', /[?&]rowId=\d+(&|$)/.test(delUrl));
 
   console.log('\n--- tidak ada error JS sepanjang jalan ---');
   eq('error', errors, []);

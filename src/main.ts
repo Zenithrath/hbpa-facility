@@ -145,14 +145,14 @@ const TRANSPORT_PAGE: Page = {
           ${icon('search', 'w-4 h-4 text-surface-400 absolute top-1/2 left-3.5 -translate-y-1/2')}
           <input id="q" type="search" class="field pl-10" placeholder="Cari nama, no., divisi, tujuan, plat...">
         </div>
-        <select id="f-status" class="field w-auto text-xs font-semibold">
+        <select id="filter-status" class="field w-auto text-xs font-semibold">
           <option value="">Semua Status</option>
           <option value="Pending">Pending</option>
           <option value="Disetujui">Disetujui</option>
           <option value="Ditolak">Ditolak</option>
           <option value="Selesai">Selesai</option>
         </select>
-        <select id="f-dept" class="field w-auto text-xs font-semibold"></select>
+        <select id="filter-dept" class="field w-auto text-xs font-semibold"></select>
         <button class="btn-slate shrink-0" data-action="export">${icon('file')} Ekspor CSV</button>
         <button class="btn-primary shrink-0" data-action="create-new">${icon('plus')} Permintaan Baru</button>
       </div>
@@ -446,7 +446,7 @@ function wireInputs(page: Page): void {
   for (const id of ['q', 'inv-q', 'mail-q']) {
     $(id)?.addEventListener('input', () => page.onSearchInput?.());
   }
-  for (const id of ['f-status', 'f-dept', 'inv-status']) {
+  for (const id of ['filter-status', 'filter-dept', 'inv-status']) {
     $(id)?.addEventListener('change', () => page.onFilterChange?.());
   }
 }

@@ -53,11 +53,12 @@ const transport = sheet([
 ]);
 
 const inventaris = sheet([
-  ['NO', 'NAMA', 'KONTAK', 'TGL PEMINJAMAN', 'TGL PENGEMBALIAN', 'KEPERLUAN',
-    'BARANG1', 'QTY1', 'KONDISI AMBIL1', 'KONDISI KEMBALI1',
-    'BARANG2', 'QTY2', 'KONDISI AMBIL2', 'KONDISI KEMBALI2'],
-  ['001', 'Rina', '08123', '10/10/2026', '01/10/2026', 'Pekerjaan lapangan',
-    'Kamera', '1', 'Baik', '', 'Tripod', '2', 'Baik', ''],
+  ['NO', 'NAMA', 'KONTAK', 'HARI & TGL PEMINJAMAN', 'KEPERLUAN', 'HARI & TGL PENGEMBALIAN',
+    '  BARANG 1  ', 'QTY', 'KONDISI AMBIL', 'TAMBAH?',
+    'BARANG 2  ', 'QTY', 'KONDISI AMBIL', 'TAMBAH?',
+    '  PERSETUJUAN PEMINJAM  ', 'KONDISI KEMBALI 1', 'KONDISI KEMBALI 2'],
+  ['001', 'Rina', '08123', '10/10/2026', 'Pekerjaan lapangan', '01/10/2026',
+    'Kamera', '1', 'Baik', '', 'Tripod', '2', 'Rusak ringan', '', 'Rina', '', ''],
 ]);
 
 const ss = {
@@ -124,6 +125,7 @@ eq('2 baris', list.data.items.length, 2);
 eq('terbaru di atas', list.data.items[0].nama, 'Dewi');
 eq('noSurat dari kolom NO', list.data.items[1].noSurat, 'TR/202610/001');
 eq('noSurat otomatis saat kolom NO kosong', /^TR\/\d{6}\/\d{3}$/.test(list.data.items[0].noSurat), true);
+eq('tanggal pengajuan dari Timestamp', list.data.items[1].tglPengajuan, '18/10/2026');
 eq('status lama Approved -> Disetujui', list.data.items[1].status, 'Disetujui');
 eq('status kosong -> Pending', list.data.items[0].status, 'Pending');
 eq('paginasi', list.data.pagination.total, 2);
@@ -146,6 +148,10 @@ eq('tolak kalau baris bergeser', stale.success, false);
 eq('pesan guard', /sudah berubah/.test(stale.message), true);
 eq('nilai lama tidak ditimpa', transport.grid[2][1], 'Dewi Putri');
 
+const blankStatus = post('updateRequest', { rowId: target.rowId, status: '' });
+eq('status kosong tidak error', blankStatus.success, true);
+eq('status kosong tidak menghapus status', transport.grid[2][9], 'Selesai');
+
 console.log('\n--- kolom yang hilang dari spreadsheet ---');
 const keepDriver = transport.grid[0][12];
 transport.grid[0][12] = 'SOME_OTHER_COLUMN';   // judul tidak dikenal
@@ -159,30 +165,61 @@ transport.grid[0][12] = keepDriver;
 vm.runInContext('colCache_ = {};', ctx);
 eq('pulih setelah judul dikembalikan', ctx.listTransport_()[0].driver, 'Andi');
 
+console.log('\n--- kolom TANGGAL opsional ---');
+const keepTgl = transport.grid[0][6];
+transport.grid[0][6] = 'TGL SURAT';
+vm.runInContext('colCache_ = {};', ctx);
+eq('tanggal tidak dianggap kolom wajib', call('getBootstrap').data.missingFields, []);
+eq('kolom tanggal tetap kosong tanpa error', ctx.listTransport_()[0].tanggal, '-');
+const tglSave = post('updateRequest', { rowId: 2, tanggal: '21/10/2026' });
+eq('simpan tanggal tidak error', tglSave.success, true);
+eq('tanpa peringatan tanggal', tglSave.warning || '', '');
+eq('sel tanggal lama tidak tersentuh', transport.grid[1][6], '19/10/2026');
+transport.grid[0][6] = keepTgl;
+vm.runInContext('colCache_ = {};', ctx);
+
+console.log('\n--- nomor surat bisa diedit ---');
+const noSave = post('updateRequest', { rowId: 2, noSurat: '010/X/FCL/2026' });
+eq('nomor surat tersimpan', transport.grid[1][0], '010/X/FCL/2026');
+post('updateRequest', { rowId: 2, noSurat: '' });
+eq('nomor kosong dibuat otomatis', /^TR\/\d{6}\/\d{3}$/.test(ctx.listTransport_()[0].noSurat), true);
+post('updateRequest', { rowId: 2, noSurat: 'TR/202610/001' });
+eq('nomor dipulihkan', transport.grid[1][0], 'TR/202610/001');
+
+console.log('\n--- jam pemakaian ---');
+post('updateRequest', { rowId: 3, jam: '9:30' });
+eq('jam digabung ke HARI/TANGGAL/JAM', transport.grid[2][5], 'Senin, 19/10/2026 09:30');
+eq('jam ngawur ditolak', post('updateRequest', { rowId: 3, jam: 'pagi' }).success, false);
+
 console.log('\n--- inventaris ---');
 const inv = call('getInventarisData');
 eq('1 baris', inv.data.length, 1);
 eq('noDok', inv.data[0].noDok, '001');
 eq('item punya n (bug lama)', inv.data[0].items.map((i) => i.n), ['1', '2']);
 eq('barang', inv.data[0].items.map((i) => i.barang), ['Kamera', 'Tripod']);
+eq('qty tiap grup', inv.data[0].items.map((i) => i.qty), ['1', '2']);
+eq('kondisi ambil tiap grup', inv.data[0].items.map((i) => i.kondisiAmbil), ['Baik', 'Rusak ringan']);
+eq('tgl kembali dari judul "Hari & Tgl Pengembalian"', inv.data[0].tglKembali, '01/10/2026');
 eq('status default', inv.data[0].status, 'Dipinjam');
 
 const invSave = post('saveInventaris', {
-  rowId: 2, sig: inv.data[0].sig, status: 'Selesai',
+  rowId: 2, sig: inv.data[0].sig, status: 'Selesai', noDok: 'PB/HBPA/001',
   tglKembaliAktual: '20/10/2026', catatan: 'Lengkap',
   lines: [{ n: '1', kondisiKembali: 'Rusak' }, { n: '2', kondisiKembali: 'Baik' }],
 });
 eq('sukses', invSave.success, true);
-eq('kondisi kembali 1', inventaris.grid[1][9], 'Rusak');
-eq('kondisi kembali 2', inventaris.grid[1][13], 'Baik');
-eq('kolom STATUS dibuat', inventaris.grid[0][14], 'STATUS');
-eq('nilai STATUS', inventaris.grid[1][14], 'Selesai');
-eq('kolom TGL dibuat', inventaris.grid[0][15], 'TGL KEMBALI AKTUAL');
-eq('nilai TGL', inventaris.grid[1][15], '20/10/2026');
-eq('kolom CATATAN dibuat', inventaris.grid[0][16], 'CATATAN');
+eq('no dokumen tersimpan', inventaris.grid[1][0], 'PB/HBPA/001');
+eq('kondisi kembali 1', inventaris.grid[1][15], 'Rusak');
+eq('kondisi kembali 2', inventaris.grid[1][16], 'Baik');
+eq('kolom STATUS dibuat', inventaris.grid[0][17], 'STATUS');
+eq('nilai STATUS', inventaris.grid[1][17], 'Selesai');
+eq('kolom TGL dibuat', inventaris.grid[0][18], 'TGL KEMBALI AKTUAL');
+eq('nilai TGL', inventaris.grid[1][18], '20/10/2026');
+eq('kolom CATATAN dibuat', inventaris.grid[0][19], 'CATATAN');
 
 const inv2 = call('getInventarisData');
 eq('baca ulang kondisi kembali', inv2.data[0].items.map((i) => i.kondisiKembali), ['Rusak', 'Baik']);
+eq('baca ulang no dokumen', inv2.data[0].noDok, 'PB/HBPA/001');
 eq('baca ulang status', inv2.data[0].status, 'Selesai');
 
 console.log('\n--- guard inventaris ---');

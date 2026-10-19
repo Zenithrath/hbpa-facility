@@ -28,7 +28,6 @@ import {
   print,
   readForm,
   must,
-  slashToIso,
   statusBadge,
   toast,
 } from '../ui';
@@ -40,7 +39,7 @@ const COL_LABEL: Record<(typeof TRANSPORT_COLUMNS)[number], string> = {
   ijn: 'IJN',
   tujuan: 'Tujuan',
   tglJam: 'Hari / Tanggal / Jam',
-  tanggal: 'Tanggal',
+  tglPengajuan: 'Tanggal Pengajuan',
   nopol: 'Plat No.',
   keperluan: 'Keperluan',
   status: 'Status',
@@ -50,8 +49,8 @@ const COL_LABEL: Record<(typeof TRANSPORT_COLUMNS)[number], string> = {
 
 function visible(): TransportItem[] {
   const q = (field$('q')?.value ?? '').trim().toLowerCase();
-  const status = field$('f-status')?.value ?? '';
-  const dept = field$('f-dept')?.value ?? '';
+  const status = field$('filter-status')?.value ?? '';
+  const dept = field$('filter-dept')?.value ?? '';
 
   return store.transport.filter((item) => {
     if (status && item.status !== status) return false;
@@ -101,7 +100,7 @@ export function renderList(): void {
       <div class="flex items-start justify-between gap-2">
         <div class="min-w-0">
           <div class="text-xs font-bold text-primary-700 break-words">${esc(item.noSurat)}</div>
-          <div class="text-[11px] text-surface-400">${esc(item.tanggal)}</div>
+          <div class="text-[11px] text-surface-400">${esc(item.tglPengajuan)}</div>
         </div>
         ${statusBadge(item.status)}
       </div>
@@ -157,7 +156,7 @@ export function renderHeader(): void {
 }
 
 export function renderFilters(): void {
-  const dept = $<HTMLSelectElement>('f-dept');
+  const dept = $<HTMLSelectElement>('filter-dept');
   if (dept && dept.options.length === 0) {
     dept.innerHTML =
       '<option value="">Semua Divisi</option>' +
@@ -186,15 +185,11 @@ export function openDrawer(rowId: number): void {
   const item = store.transport.find((i) => i.rowId === rowId);
   if (!item) return;
 
-  const missingStatus = store.missingFields.includes('STATUS');
+  const missingStatus = store.missingFields.includes('status');
 
   drawer.open({
     title: 'Permintaan Transportasi',
     body: `
-      <div class="rounded-xl border border-primary-100 bg-primary-50 px-4 py-3">
-        <div class="text-[11px] font-bold tracking-wide text-primary-600 uppercase">Nomor</div>
-        <div class="text-base font-bold text-primary-800 break-words">${esc(item.noSurat)}</div>
-      </div>
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         ${TRANSPORT_FIELDS.map((f) => formField(f, isoFor(f.key, item))).join('')}
       </div>
@@ -214,9 +209,15 @@ export function openDrawer(rowId: number): void {
   });
 }
 
-/** Kolom bertipe tanggal disimpan sebagai DD/MM/YYYY, formnya memakai YYYY-MM-DD. */
+/** Isi awal tiap field drawer. Jam diambil dari teks HARI/TANGGAL/JAM. */
 function isoFor(key: EditableTransportKey, item: TransportItem): string {
-  return key === 'tanggal' ? slashToIso(item.tanggal) : item[key];
+  return key === 'jam' ? jamFor(item.tglJam) : item[key];
+}
+
+/** Ambil jam 'HH:MM' dari teks HARI/TANGGAL/JAM kalau ada. */
+function jamFor(value: string): string {
+  const m = /(\d{1,2}):(\d{2})/.exec(value);
+  return m ? `${String(Number(m[1])).padStart(2, '0')}:${m[2]}` : '';
 }
 
 export async function save(rowId: number): Promise<void> {
@@ -263,7 +264,7 @@ export function printRow(rowId: number, fromDrawer = false): void {
   print.set('p-dept', source.dept);
   print.set('p-ijn', source.ijn);
   print.set('p-tujuan', source.tujuan);
-  print.set('p-tgljam', orDash(source.tglJam) === '-' ? source.tanggal : source.tglJam);
+  print.set('p-tgljam', orDash(source.tglJam));
   print.set('p-nopol', source.nopol);
   print.set('p-keperluan', source.keperluan);
   print.set('p-tglcetak', todayLong());
@@ -390,8 +391,8 @@ const onSearch = debounce(() => renderList(), 250);
 
 export function bindSearch(): void {
   $('q')?.addEventListener('input', onSearch);
-  $('f-status')?.addEventListener('change', renderList);
-  $('f-dept')?.addEventListener('change', renderList);
+  $('filter-status')?.addEventListener('change', renderList);
+  $('filter-dept')?.addEventListener('change', renderList);
 }
 
 function todayLong(): string {

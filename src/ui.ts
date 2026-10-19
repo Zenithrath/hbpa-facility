@@ -175,7 +175,7 @@ function control(field: FieldDef<string>, value: string, attrs = ''): string {
     return `<textarea id="${id}" rows="3" class="field" ${attrs}>${esc(value)}</textarea>`;
   }
 
-  const type = field.type === 'date' ? 'date' : 'text';
+  const type = field.type === 'date' || field.type === 'time' ? field.type : 'text';
   return (
     `<input type="${type}" id="${id}" class="field${field.upper ? ' font-mono font-bold uppercase' : ''}"` +
     ` value="${esc(value)}"${field.placeholder ? ` placeholder="${esc(field.placeholder)}"` : ''} ${attrs}>`
