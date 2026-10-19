@@ -89,6 +89,47 @@ pesan "Isi baris ini sudah berubah" daripada menimpa record yang salah.
 `?action=diagnose` menampilkan kolom mana yang terdeteksi, mana yang akan
 dibuat, dan mana yang bermasalah.
 
+## Fitur
+
+Semua fitur dari script aslimu ada di sini:
+
+- Daftar permintaan: cari, filter status, filter divisi, tabel + kartu HP
+- Edit per baris lewat drawer, lengkap dengan penjaga baris bergeser
+- Buat permintaan baru
+- Hapus permintaan
+- Ekspor CSV (mengikuti filter yang sedang aktif)
+- Cetak A5 — form permintaan transportasi dan form peminjaman barang
+- Kirim email + lampiran PDF, per baris atau beberapa sekaligus
+- **Email otomatis** tiap ada baris baru (Google Form atau ketik manual)
+- Peminjaman inventaris: kondisi kembali tiap barang, catatan, cetak A5
+- Pemetaan kolom dari **judul** di baris 1, bukan nomor kolom
+
+## Pemasangan di Apps Script
+
+```
+1. Ganti isi Code.gs dengan file apps-script/Code.gs
+2. Buka Project Settings, pastikan "Show appsscript.json manifest file" aktif,
+   lalu isi appsscript.json seperti contoh di README bagian Manifest
+3. Isi CONFIG.tabs di Code.gs dengan nama tab aslimu
+4. Run laporkan()   -> salin Execution log, pastikan CONFIG.tabs sudah cocok
+5. Run setupTriggers()  -> mengaktifkan email otomatis
+6. Deploy > New deployment > Web app
+   Execute as: Me | Who has access: Anyone
+7. Tempel URL /exec ke src/config.ts
+```
+
+### appsscript.json
+
+```json
+{
+  "timeZone": "Asia/Makassar",
+  "dependencies": {},
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "webapp": { "executeAs": "USER_DEPLOYING", "access": "ANYONE_ANONYMOUS" }
+}
+```
+
 ## Testing
 
 ```powershell
@@ -99,7 +140,8 @@ Dua berkas, tanpa framework, tanpa konfigurasi:
 
 - `tests/backend.test.cjs` — menjalankan `Code.gs` di Node dengan spreadsheet
   dan layanan Apps Script di-stub. Memeriksa pemetaan kolom dari judul,
-  guard baris bergeser, pembuatan kolom otomatis, email + PDF, validasi.
+  guard baris bergeser, pembuatan kolom otomatis, email + PDF, trigger
+  email otomatis, dan validasi payload.
 - `tests/frontend.test.cjs` — menjalankan aplikasi penuh di JSDOM dengan API
   palsu. Memeriksa router, filter, drawer (termasuk bug ID kondisi
   pengembalian yang dulu rusak), dan area cetak.

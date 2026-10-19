@@ -342,6 +342,48 @@ export async function create(): Promise<void> {
   }
 }
 
+/* ---------- Export CSV ---------- */
+
+/**
+ * Ekspor daftar yang sedang tampil (setelah filter) sebagai CSV.
+ * Dibuat di browser, jadi tidak menambah beban server dan tidak terbatas
+ * jumlah baris. BOM UTF-8 supaya Excel di Windowsopened dengan benar.
+ */
+export function exportCsv(): void {
+  const rows = visible();
+  if (!rows.length) {
+    toast('Tidak ada data untuk diekspor.', 'error');
+    return;
+  }
+
+  const headers = ['No. Surat', ...TRANSPORT_COLUMNS.filter((k) => k !== 'noSurat').map((k) => COL_LABEL[k]),
+    'Pemohon', 'Disetujui', 'Driver Name', 'Timestamp'];
+
+  const cells = rows.map((item) => [
+    item.noSurat, ...TRANSPORT_COLUMNS.filter((k) => k !== 'noSurat').map((k) => item[k]),
+    item.pemohon, item.disetujui, item.driver, item.timestamp,
+  ]);
+
+  const csv = [headers, ...cells]
+    .map((line) => line.map(csvCell).join(';'))
+    .join('\r\n');
+
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `Transport_HBPA_${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+
+  toast(`${rows.length} baris diekspor.`);
+}
+
+function csvCell(value: unknown): string {
+  const text = String(value ?? '');
+  return /[";\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
 /* ---------- Bantuan ---------- */
 
 const onSearch = debounce(() => renderList(), 250);

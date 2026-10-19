@@ -153,6 +153,7 @@ const TRANSPORT_PAGE: Page = {
           <option value="Selesai">Selesai</option>
         </select>
         <select id="f-dept" class="field w-auto text-xs font-semibold"></select>
+        <button class="btn-slate shrink-0" data-action="export">${icon('file')} Ekspor CSV</button>
         <button class="btn-primary shrink-0" data-action="create-new">${icon('plus')} Permintaan Baru</button>
       </div>
 
@@ -375,6 +376,7 @@ const ACTIONS: Record<string, Handler> = {
   print: (el, id) => transport.printRow(id, el.dataset.from === 'drawer'),
   email: (el, id) => transport.email([id], el as HTMLButtonElement),
   delete: (_el, id) => transport.remove(id),
+  export: () => transport.exportCsv(),
 
   'inv-open': (_el, id) => inventaris.openDrawer(id),
   'inv-save': (_el, id) => inventaris.save(id),

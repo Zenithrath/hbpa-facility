@@ -409,7 +409,8 @@ function computeStats_() {
 
   var stats = {
     total: list.length,
-    pending: 0, approved: 0, rejected: 0, completed: 0, month: 0
+    pending: 0, approved: 0, rejected: 0, completed: 0, month: 0,
+    recent: list.slice(0, 5)
   };
 
   list.forEach(function (r) {
@@ -721,21 +722,12 @@ function saveInventaris_(body) {
    EMAIL + PDF
    ============================================================================ */
 
-function sendEmail_(param) {
-  var ids = String(param.rowIds || '').split(',')
-    .map(function (v) { return Number(v); })
-    .filter(function (v) { return v > 0; });
-
-  if (!ids.length) throw new Error('Tidak ada permintaan dipilih.');
-  if (ids.length > MAX_EMAIL_ROWS) throw new Error('Maksimal ' + MAX_EMAIL_ROWS + ' permintaan sekali kirim.');
+/**
+ * Kirim satu email berisi satu atau beberapa permintaan + PDF tiap permintaan.
+ * Dipakai oleh tombol di dashboard (sendEmail_) maupun trigger otomatis.
+ */
+function sendEmailItems_(items, judul) {
   if (!CONFIG.mail.to) throw new Error('CONFIG.mail.to belum diisi di Code.gs.');
-
-  var sh = sheet_('transport');
-  var colsMap = cols_('transport');
-  var items = ids.map(function (rowId) {
-    if (rowId > sh.getLastRow()) throw new Error('Baris ' + rowId + ' tidak ditemukan.');
-    return transportItem_(sh.getRange(rowId, 1, 1, sh.getLastColumn()).getDisplayValues()[0], colsMap, rowId);
-  });
 
   var attachments = [];
   var html = '';
@@ -747,8 +739,9 @@ function sendEmail_(param) {
     text += emailText_(it) + '\n\n';
   });
 
+  // Waktu ikut di subjek supaya Gmail tidak menggabung email yang isinya sama.
   var stamp = fmt_(new Date(), 'dd MMM yyyy HH:mm:ss');
-  var subject = 'Info Permintaan Transportasi - ' + (items.length === 1
+  var subject = judul + ' - ' + (items.length === 1
     ? items[0].noSurat + ' (' + items[0].nama + ')'
     : items.length + ' permintaan') + ' [' + stamp + ']';
 
@@ -757,12 +750,32 @@ function sendEmail_(param) {
     subject: subject,
     body: 'PT. Hidup Baru Perdana Abadi\nDikirim: ' + stamp + '\n\n' + text + 'Dokumen PDF terlampir.',
     htmlBody: '<div style="font-family:Arial,sans-serif;font-size:14px;color:#111">' +
-      '<p><b>PT. Hidup Baru Perdana Abadi</b><br>Info Permintaan Transportasi' +
-      '<br><span style="color:#666;font-size:12px">Dikirim: ' + stamp + '</span></p>' + html + '</div>',
+      '<p><b>PT. Hidup Baru Perdana Abadi</b><br>' + esc_(judul) +
+      '<br><span style="color:#666;font-size:12px">Dikirim: ' + stamp + '</span></p>' + html +
+      '<p style="color:#666;font-size:12px">Dokumen PDF terlampir. Email ini dikirim otomatis dari Dashboard Facility.</p></div>',
     attachments: attachments,
     name: 'Facility Department PT HBPA'
   });
 
+  return items.length;
+}
+
+function sendEmail_(param) {
+  var ids = String(param.rowIds || '').split(',')
+    .map(function (v) { return Number(v); })
+    .filter(function (v) { return v > 0; });
+
+  if (!ids.length) throw new Error('Tidak ada permintaan dipilih.');
+  if (ids.length > MAX_EMAIL_ROWS) throw new Error('Maksimal ' + MAX_EMAIL_ROWS + ' permintaan sekali kirim.');
+
+  var sh = sheet_('transport');
+  var colsMap = cols_('transport');
+  var items = ids.map(function (rowId) {
+    if (rowId > sh.getLastRow()) throw new Error('Baris ' + rowId + ' tidak ditemukan.');
+    return transportItem_(sh.getRange(rowId, 1, 1, sh.getLastColumn()).getDisplayValues()[0], colsMap, rowId);
+  });
+
+  sendEmailItems_(items, 'Info Permintaan Transportasi');
   return ok_({ sent: items.length });
 }
 
@@ -853,6 +866,107 @@ function pdfBlob_(it) {
 
 
 /* ============================================================================
+   EMAIL OTOMATIS TIAP ADA BARIS BARU
+   ============================================================================
+   Cara kerja: nomor baris terakhir yang sudah dinotifikasi disimpan di Script
+   Properties. Setiap ada baris terisi baru — dari Google Form atau diketik
+   manual — email + PDF dikirim sendiri. Baris yang sama tidak pernah dikirim
+   dua kali.
+
+   Dijalankan oleh dua trigger:
+     onFormSubmitTrigger  setiap Google Form mengirim jawaban
+     notifyNewRowsTrigger setiap 5 menit (cadangan, misalnya form diedit manual)
+   ============================================================================ */
+
+var PROP_LAST_ROW = 'HBPA_LAST_NOTIFIED_ROW';
+
+/** Batas pengiriman per putaran, supaya kuota harian tidak habis. */
+var MAX_AUTO_EMAILS = 10;
+
+/** Baris paling bawah yang isinya sudah terisi. */
+function lastFilledRow_() {
+  var list = listTransport_();
+  if (!list.length) return 1;
+  return list[list.length - 1].rowId; // listTransport_ urut dari baris paling atas
+}
+
+function notifyNewRows() {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return;
+
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var sh = sheet_('transport');
+    var colsMap = cols_('transport');
+    var stored = props.getProperty(PROP_LAST_ROW);
+    var last = Number(stored || 0);
+
+    // Belum pernah disetup, atau baris dihapus: mulai dari data yang ada
+    // sekarang tanpa mengirim apa pun.
+    if (!stored || last > sh.getLastRow()) {
+      props.setProperty(PROP_LAST_ROW, String(lastFilledRow_()));
+      return;
+    }
+
+    var sent = 0;
+    for (var rowId = last + 1; rowId <= sh.getLastRow() && sent < MAX_AUTO_EMAILS; rowId++) {
+      var row = sh.getRange(rowId, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
+      var item = transportItem_(row, colsMap, rowId);
+      if (isEmptyTransport_(item)) continue;
+
+      try {
+        sendEmailItems_([item], 'Permintaan Transportasi Baru');
+      } catch (err) {
+        Logger.log('Email otomatis gagal di baris ' + rowId + ': ' + err);
+        break; // dicoba lagi di putaran berikutnya, email tidak hilang
+      }
+
+      props.setProperty(PROP_LAST_ROW, String(rowId));
+      sent++;
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function onFormSubmit() {
+  SpreadsheetApp.flush();
+  Utilities.sleep(2000); // tunggu rumus kolom NO. terisi
+  notifyNewRows();
+}
+
+/**
+ * Pasang trigger. Jalankan sekali dari editor Apps Script.
+ * Aman dijalankan berkali-kali: trigger lama dihapus lebih dulu.
+ */
+function setupTriggers() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    var fn = t.getHandlerFunction();
+    if (fn === 'onFormSubmitTrigger' || fn === 'notifyNewRowsTrigger') ScriptApp.deleteTrigger(t);
+  });
+
+  PropertiesService.getScriptProperties().setProperty(PROP_LAST_ROW, String(lastFilledRow_()));
+
+  ScriptApp.newTrigger('onFormSubmitTrigger').forSpreadsheet(sheet_('transport').getParent()).onFormSubmit().create();
+  ScriptApp.newTrigger('notifyNewRowsTrigger').timeBased().everyMinutes(5).create();
+
+  return 'Trigger terpasang: 1 onFormSubmit + 1 timeBased (tiap 5 menit).';
+}
+
+/** Tes kirim: kirim baris ke-2 ke CONFIG.mail.to. Jalankan sekali untuk memberi izin Gmail & UrlFetch. */
+function testEmail() {
+  var ids = [2];
+  var sh = sheet_('transport');
+  var colsMap = cols_('transport');
+  var items = ids.map(function (rowId) {
+    return transportItem_(sh.getRange(rowId, 1, 1, sh.getLastColumn()).getDisplayValues()[0], colsMap, rowId);
+  });
+  sendEmailItems_(items, 'Permintaan Transportasi');
+  return 'Test email terkirim.';
+}
+
+
+/* ============================================================================
    DIAGNOSTIK
    ============================================================================ */
 
@@ -887,6 +1001,18 @@ function diagnose_() {
    ============================================================================ */
 
 /**
+ * Nama fungsi di bawah ini yang dilihat ScriptApp, jadi harus ada di scope
+ * global dan tidak boleh diubah namanya tanpa memasang trigger ulang.
+ */
+function notifyNewRowsTrigger() {
+  notifyNewRows();
+}
+
+function onFormSubmitTrigger() {
+  onFormSubmit();
+}
+
+/**
  * JALANKAN SEKALI dari editor Apps Script.
  * Mencetak nama tab + judul kolom ke Execution log, supaya pemilik script
  * bisa memastikan CONFIG.tabs dan COLS masih cocok dengan spreadsheet.
@@ -918,5 +1044,5 @@ function setup() {
   Logger.log(JSON.stringify(report, null, 2));
 
   colCache_ = {};
-  Logger.log('Siap. Sekarang Deploy > New deployment > Web app.');
+  Logger.log('Langkah berikutnya: jalankan setupTriggers() untuk mengaktifkan email otomatis.');
 }

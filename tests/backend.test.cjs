@@ -222,8 +222,61 @@ eq('tab hilang memberi pesan jelas', call('getBootstrap', {}) && (() => {
   return r.success === false && /tidak ditemukan/.test(r.message);
 })(), true);
 
-console.log('\n--- payloadzorOS ---');
+console.log('\n--- payload kegedean ---');
 eq('payload kegedean ditolak', post('updateRequest', { rowId: 2, keperluan: 'x'.repeat(5000) }).success, false);
+
+console.log('\n--- statistik recent ---');
+eq('recent berisi 5 terbaru', call('getDashboardStats').data.stats.recent.length, 2);
+
+console.log('\n--- trigger email otomatis ---');
+const props = {};
+ctx.PropertiesService = {
+  getScriptProperties: () => ({
+    getProperty: (k) => (k in props ? props[k] : null),
+    setProperty: (k, v) => { props[k] = v; },
+  }),
+};
+ctx.ScriptApp = {
+  created: [],
+  getProjectTriggers: () => ctx.ScriptApp.triggers || [],
+  deleteTrigger() {},
+  newTrigger(name) {
+    const t = { name, spec: '' };
+    t.forSpreadsheet = () => t;
+    t.onFormSubmit = () => { t.spec = 'form'; return t; };
+    t.timeBased = () => { t.spec = 'time'; return t; };
+    t.everyMinutes = (m) => { t.every = m; return t; };
+    t.create = () => { ctx.ScriptApp.created.push(t); return t; };
+    return t;
+  },
+};
+
+const before = sentMail.length;
+props.HBPA_LAST_NOTIFIED_ROW = '2';
+ctx.notifyNewRows();
+eq('baris baru dikirimi email', sentMail.length - before, 1);
+eq('baris yang dikirim adalah baris terbaru', /Dewi Putri/.test(sentMail.at(-1).body), true);
+eq('penanda baris terakhir ikut maju', props.HBPA_LAST_NOTIFIED_ROW, '3');
+eq('tidak kirim ulang baris yang sama', (ctx.notifyNewRows(), sentMail.length - before), 1);
+
+props.HBPA_LAST_NOTIFIED_ROW = '1';
+const bulk = sentMail.length;
+ctx.notifyNewRows();
+eq('kirim semua baris yang tertinggal', sentMail.length - bulk, 2);
+eq('tidak melewati batas', sentMail.length - bulk <= 10, true);
+
+props.HBPA_LAST_NOTIFIED_ROW = null;
+const fresh = sentMail.length;
+ctx.notifyNewRows();
+eq('tanpa setup: tidak kirim massal', sentMail.length - fresh, 0);
+eq('langsung mencatat baris terakhir', props.HBPA_LAST_NOTIFIED_ROW, '3');
+
+const installed = ctx.setupTriggers();
+eq('setupTriggers mengembalikan pesan', /terpasang/.test(installed), true);
+eq('2 trigger dibuat', ctx.ScriptApp.created.length, 2);
+eq('trigger form dibuat', ctx.ScriptApp.created.some((t) => t.name === 'onFormSubmitTrigger'), true);
+eq('trigger 5 menit dibuat', ctx.ScriptApp.created.some((t) => t.every === 5), true);
+eq('testEmail jalan', /terkirim/.test(ctx.testEmail()), true);
 
 console.log(`\n=== ${pass} pass, ${fail} fail ===`);
 process.exit(fail ? 1 : 0);
