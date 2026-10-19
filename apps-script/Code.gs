@@ -886,10 +886,37 @@ function diagnose_() {
    PENYIAPAN
    ============================================================================ */
 
+/**
+ * JALANKAN SEKALI dari editor Apps Script.
+ * Mencetak nama tab + judul kolom ke Execution log, supaya pemilik script
+ * bisa memastikan CONFIG.tabs dan COLS masih cocok dengan spreadsheet.
+ */
+function laporkan() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var out = ['SPREADSHEET: ' + ss.getId(), ''];
+
+  ss.getSheets().forEach(function (sh) {
+    var last = sh.getLastColumn();
+    var head = last > 0 ? sh.getRange(1, 1, 1, last).getDisplayValues()[0] : [];
+
+    out.push('TAB: ' + sh.getName() + '  (baris: ' + sh.getLastRow() + ', kolom: ' + last + ')');
+    out.push('  ' + head.map(function (h, i) { return (i + 1) + '. "' + h + '"'; }).join(' | '));
+    out.push('');
+  });
+
+  var text = out.join('\n');
+  Logger.log(text);
+  return text;
+}
+
 /** JALANKAN SEKALI dari editor Apps Script. */
 function setup() {
+  laporkan();
+
   var report = diagnose_();
+  Logger.log('--- STATUS PEMETAAN ---');
   Logger.log(JSON.stringify(report, null, 2));
+
   colCache_ = {};
   Logger.log('Siap. Sekarang Deploy > New deployment > Web app.');
 }

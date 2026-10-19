@@ -4,14 +4,17 @@
   "version": "1.0.0",
   "type": "module",
   "description": "Dashboard Permintaan Transportasi & Peminjaman Inventaris - PT HBPA",
-  "scripts": {
+"scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node tests/backend.test.cjs && node tests/frontend.test.cjs"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.0",
+    "esbuild": "^0.25.0",
+    "jsdom": "^26.0.0",
     "tailwindcss": "^4.1.0",
     "typescript": "^5.7.0",
     "vite": "^6.0.0"

@@ -92,5 +92,17 @@ dibuat, dan mana yang bermasalah.
 ## Testing
 
 ```powershell
-node ..\..\..\AppData\Local\Temp\opencode\dom-smoke.cjs
+npm test
 ```
+
+Dua berkas, tanpa framework, tanpa konfigurasi:
+
+- `tests/backend.test.cjs` — menjalankan `Code.gs` di Node dengan spreadsheet
+  dan layanan Apps Script di-stub. Memeriksa pemetaan kolom dari judul,
+  guard baris bergeser, pembuatan kolom otomatis, email + PDF, validasi.
+- `tests/frontend.test.cjs` — menjalankan aplikasi penuh di JSDOM dengan API
+  palsu. Memeriksa router, filter, drawer (termasuk bug ID kondisi
+  pengembalian yang dulu rusak), dan area cetak.
+
+Backend perlu diperiksa setelah `Code.gs` diubah — file itu diserahkan ke
+pemilik Apps Script dan tidak bisa di-debug dari sini.
