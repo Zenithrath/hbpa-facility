@@ -111,7 +111,9 @@ export interface DrawerContent {
 export const drawer = {
   open({ title, body, footer = '' }: DrawerContent): void {
     must('drawer-title').textContent = title;
-    must('drawer-body').innerHTML = body;
+    const bodyEl = must('drawer-body');
+    bodyEl.innerHTML = body;
+    bodyEl.scrollTop = 0;
     must('drawer-footer').innerHTML = footer;
 
     const el = must('drawer');

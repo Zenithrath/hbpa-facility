@@ -218,7 +218,6 @@ export async function openDetail(rowId: number): Promise<void> {
 
   const bodyEl = must('drawer-body');
   const prevOverflow = bodyEl.style.overflow;
-  bodyEl.style.overflow = 'hidden';
   const originalClose = drawer.close;
   drawer.close = () => {
     bodyEl.style.overflow = prevOverflow;
@@ -226,37 +225,72 @@ export async function openDetail(rowId: number): Promise<void> {
     drawer.close = originalClose;
   };
 
+  const paperPreview = (doc?: CkHeader, it?: ClistItem) => `
+    <div class="ck-drawer-scroll" style="max-height:calc(100vh - 240px);overflow:auto">
+      <div style="width:381pt;height:539pt;overflow:hidden;margin:0 auto">
+        <div style="width:595.28pt;height:841.89pt;transform:scale(0.64);transform-origin:top left">
+          ${renderChecklistPaper(doc, it)}
+        </div>
+      </div>
+    </div>`;
+
   drawer.open({
       title: 'Detail Checklist Kendaraan',
       body: `
-        <div class="mb-3 flex gap-2">
-          <button type="button" class="btn-slate" data-ck-tab="preview">Preview</button>
-          <button type="button" class="btn-slate" data-ck-tab="edit">Edit</button>
+        <div class="mb-4 inline-flex rounded-xl bg-surface-100 p-1" id="ck-tabs">
+          <button type="button" data-ck-tab="preview" class="px-4 py-1.5 text-sm font-semibold rounded-lg">Preview</button>
+          <button type="button" data-ck-tab="edit" class="px-4 py-1.5 text-sm font-semibold rounded-lg">Edit</button>
         </div>
-        <div id="ck-preview">${renderChecklistPaper(d, item)}</div>
+        <div id="ck-preview">${paperPreview(d, item)}</div>
         <div id="ck-edit" class="hidden space-y-4">${renderCkEditForm(d, item)}</div>
       `,
       footer: `
-        <button class="btn-slate" data-action="cl-print" data-id="${rowId}">Cetak</button>
-        <button class="btn-primary" id="ck-save-edit" type="button">Simpan</button>
+        <div class="flex flex-wrap gap-2">
+          <button class="btn-slate" data-action="cl-print" data-id="${rowId}">Cetak</button>
+          <button class="btn-slate" id="ck-edit-toggle" type="button">Edit</button>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button class="btn-slate hidden" id="ck-cancel-edit" type="button">Batal</button>
+          <button class="btn-primary hidden" id="ck-save-edit" type="button">Simpan</button>
+        </div>
       `,
   });
 
-  // Tab switching
+  // Tab switching: preview = kertas (scroll kecil di dalam), edit = form (body scroll).
   const previewEl = must('ck-preview');
   const editEl = must('ck-edit');
-  document.querySelectorAll('[data-ck-tab]').forEach((btn) => {
+  const tabBtns = Array.from(document.querySelectorAll<HTMLElement>('[data-ck-tab]'));
+  const editToggle = document.getElementById('ck-edit-toggle');
+  const cancelBtn = document.getElementById('ck-cancel-edit');
+  const saveBtn = document.getElementById('ck-save-edit');
+
+  const setTab = (tab: 'preview' | 'edit') => {
+    const isPreview = tab === 'preview';
+    previewEl.classList.toggle('hidden', !isPreview);
+    editEl.classList.toggle('hidden', isPreview);
+    bodyEl.style.overflow = isPreview ? 'hidden' : 'auto';
+    bodyEl.scrollTop = 0;
+    tabBtns.forEach((b) => {
+      const active = b.getAttribute('data-ck-tab') === tab;
+      b.classList.toggle('bg-white', active);
+      b.classList.toggle('text-primary-600', active);
+      b.classList.toggle('shadow-sm', active);
+      b.classList.toggle('text-surface-500', !active);
+    });
+    editToggle?.classList.toggle('hidden', !isPreview);
+    cancelBtn?.classList.toggle('hidden', isPreview);
+    saveBtn?.classList.toggle('hidden', isPreview);
+  };
+  setTab('preview');
+
+  tabBtns.forEach((btn) => {
     btn.addEventListener('click', () => {
-      const tab = (btn as HTMLElement).getAttribute('data-ck-tab');
-      if (tab === 'preview') {
-        previewEl.classList.remove('hidden');
-        editEl.classList.add('hidden');
-      } else {
-        previewEl.classList.add('hidden');
-        editEl.classList.remove('hidden');
-      }
+      const tab = (btn.getAttribute('data-ck-tab') === 'edit' ? 'edit' : 'preview');
+      setTab(tab);
     });
   });
+  editToggle?.addEventListener('click', () => setTab('edit'));
+  cancelBtn?.addEventListener('click', () => setTab('preview'));
 
   // Damage add/remove
   const addDmg = document.getElementById('ce-add-damage');
@@ -283,25 +317,20 @@ export async function openDetail(rowId: number): Promise<void> {
     btn.addEventListener('click', () => (btn as HTMLElement).closest('.ce-damage-row')?.remove());
   });
 
-  // Save edit
-  const saveBtn = document.getElementById('ck-save-edit');
-  if (saveBtn) {
-    saveBtn.addEventListener('click', async () => {
-      try {
-        const body = collectCkEdit(rowId);
-        await api.updateCk(body);
-        toast('Checklist diperbarui.', 'info');
-        // refresh docs + preview
-        ckDocs = await api.getCkDocuments();
-        const newDoc = ckDocs.find((x: CkHeader) => x.rowId === rowId);
-        previewEl.innerHTML = renderChecklistPaper(newDoc, item);
-        previewEl.classList.remove('hidden');
-        editEl.classList.add('hidden');
-      } catch (e) {
-        toast('Gagal menyimpan: ' + (e as Error).message, 'error');
-      }
-    });
-  }
+  // Simpan perubahan lalu kembali ke tab Preview.
+  saveBtn?.addEventListener('click', async () => {
+    try {
+      const body = collectCkEdit(rowId);
+      await api.updateCk(body);
+      toast('Checklist diperbarui.', 'info');
+      ckDocs = await api.getCkDocuments();
+      const newDoc = ckDocs.find((x: CkHeader) => x.rowId === rowId);
+      previewEl.innerHTML = paperPreview(newDoc, item);
+      setTab('preview');
+    } catch (e) {
+      toast('Gagal menyimpan: ' + (e as Error).message, 'error');
+    }
+  });
 }
 
 /** Cetak checklist: minta tanda tangan dulu lewat modal bersama */
