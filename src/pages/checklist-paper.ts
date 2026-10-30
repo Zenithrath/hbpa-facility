@@ -15,7 +15,7 @@ const R = W - 28;
 const B = 28;
 const T = H - 28;
 
-const ITEMS: Record<string, string[]> = {
+export const CK_ITEMS: Record<string, string[]> = {
   Kaca: ['Depan', 'Kiri', 'Kanan', 'Spion Kanan', 'Spion Kiri', 'Spion Dalam'],
   'Body Mobil': ['Depan', 'Grill', 'Fender', 'Pintu Dpn Kanan', 'Pintu Dpn Kiri', 'Pintu Blk Kanan', 'Pintu Blk Kiri', 'Pintu Belakang'],
   Ban: ['Kanan Depan', 'Kiri Depan', 'Kanan Belakang', 'Kiri Belakang', 'Serep'],
@@ -151,7 +151,7 @@ export function renderChecklistPaper(doc: CkHeader | undefined, item: { rowId: n
     groups.forEach((g) => {
       html += text(x, y - 2, g, 8, true);
       y -= ROW;
-      (ITEMS[g] || []).forEach((it) => {
+      (CK_ITEMS[g] || []).forEach((it) => {
         html += rect(x, y - 3, 8, 8);
         const st = itemStatus(d, g, it);
         const status = st?.status || '';

@@ -5,7 +5,7 @@
 import { store } from '../store';
 import { api } from '../api';
 import type { CkHeader } from '../schema';
-import { renderChecklistPaper } from './checklist-paper';
+import { CK_ITEMS, renderChecklistPaper } from './checklist-paper';
 import {
   $,
   askSignature,
@@ -385,14 +385,27 @@ function renderCkEditForm(doc: CkHeader | undefined, item: ClistItem | undefined
 
   // Items
   html += '<div class="mt-3"><div class="text-xs font-bold text-surface-500 uppercase mb-2">Item Pemeriksaan</div>';
-  const groups: Record<string, any[]> = {};
+  // Mulai dari daftar item standar supaya item yang belum tersimpan
+  // (mis. Kaca Depan pada data lama) tetap muncul dan bisa diisi.
+  const groups: Record<string, { grup: string; item: string; status: string; catatan: string }[]> = {};
   const order: string[] = [];
-  for (const it of d?.items || []) {
-    const g = it.grup;
+  const addGroup = (g: string) => {
     if (!groups[g]) { groups[g] = []; order.push(g); }
-    groups[g]!.push(it);
+  };
+  Object.keys(CK_ITEMS).forEach((g) => {
+    addGroup(g);
+    CK_ITEMS[g]!.forEach((name) => groups[g]!.push({ grup: g, item: name, status: '', catatan: '' }));
+  });
+  for (const it of d?.items || []) {
+    addGroup(it.grup);
+    const found = groups[it.grup]!.find((x) => x.item === it.item);
+    if (found) {
+      found.status = it.status;
+      found.catatan = it.catatan || '';
+    } else {
+      groups[it.grup]!.push({ grup: it.grup, item: it.item, status: it.status, catatan: it.catatan || '' });
+    }
   }
-  if (!order.length) order.push('Kaca');
   for (const g of order) {
     html += '<div class="rounded-lg border border-surface-200 p-3 mb-2">';
     html += '<div class="text-xs font-bold text-surface-500 uppercase mb-2">' + esc2(g) + '</div>';

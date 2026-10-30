@@ -1262,8 +1262,19 @@ function setupTabsBaru() {
       block('Interior', ['Jok', 'Stir', 'Karpet Dasar', 'Persneling', 'Rem Tangan',
         'Dashboard', 'Sendalan', 'AC', 'Charger', 'Radio', 'Power Window', 'Gauges'])
     );
-    itemSheet.getRange(1, 1, seed.length, 4).setValues(seed);
+    itemSheet.getRange(1, 1, 1, 4).setValues([['Grup', 'Item', 'Urutan', 'Status']]);
+    itemSheet.getRange(2, 1, seed.length, 4).setValues(seed);
     dibuat.push('tab M_Item: ' + itemTab);
+  } else {
+    // Migrasi: versi lama menulis data mulai baris 1 tanpa header, sehingga
+    // item pertama (Kaca/Depan) terlewat saat dibaca. Tambahkan header di atas.
+    var mHead = itemSheet.getRange(1, 1, 1, 4).getDisplayValues()[0];
+    var mHasHeader = normalize_(mHead[0]).indexOf('grup') >= 0 || normalize_(mHead[1]).indexOf('item') >= 0;
+    if (!mHasHeader && itemSheet.getLastRow() >= 1) {
+      itemSheet.insertRowsBefore(1, 1);
+      itemSheet.getRange(1, 1, 1, 4).setValues([['Grup', 'Item', 'Urutan', 'Status']]);
+      diubah.push('M_Item: tambah baris header');
+    }
   }
 
   // Seed data M_Item kalau baris kurang
@@ -1517,17 +1528,27 @@ function getMasters_() {
   var items = [];
   try {
     var itemSheet = sheet_('mItem');
-    if (itemSheet.getLastRow() >= 2) {
-      var vals = itemSheet.getRange(2, 1, itemSheet.getLastRow() - 1, 4).getDisplayValues();
-      vals.forEach(function (r) {
-        if (!String(r[1] || '').trim()) return;
+    var lastRow = itemSheet.getLastRow();
+    if (lastRow >= 1) {
+      var vals = itemSheet.getRange(1, 1, lastRow, 4).getDisplayValues();
+      // M_Item lama bisa saja dibuat tanpa baris header (data mulai baris 1).
+      // Deteksi header supaya baris pertama tidak ikut terlewat.
+      var start = 0;
+      if (vals.length) {
+        var h0 = normalize_(vals[0][0]);
+        var h1 = normalize_(vals[0][1]);
+        if (h0.indexOf('grup') >= 0 || h1.indexOf('item') >= 0) start = 1;
+      }
+      for (var r = start; r < vals.length; r++) {
+        var row = vals[r];
+        if (!String(row[1] || '').trim()) continue;
         items.push({
-          grup: String(r[0] || '').trim(),
-          item: String(r[1] || '').trim(),
-          urut: Number(r[2]) || 0,
-          status: String(r[3] || 'Aktif').trim()
+          grup: String(row[0] || '').trim(),
+          item: String(row[1] || '').trim(),
+          urut: Number(row[2]) || 0,
+          status: String(row[3] || 'Aktif').trim()
         });
-      });
+      }
     }
   } catch (e) {}
 
