@@ -224,7 +224,7 @@ async function run() {
   ok('tidak ada exception', emptyErrors.length === 0);
   ok('pesan API_URL kosong muncul', emptyText().includes('API_URL belum diisi'));
   ok('sidebar tetap dirender', Boolean(emptyDoc.getElementById('sidebar')));
-  ok('5 menu navigasi', emptyDoc.querySelectorAll('#nav [data-page]').length === 5);
+  ok('6 menu navigasi', emptyDoc.querySelectorAll('#nav [data-page]').length === 6);
 
   // ---- Skenario 2: API_URL terisi ----
   const uncaught = [];
@@ -349,14 +349,21 @@ async function run() {
   await tick(60);
   ok('drawer detail terbuka', !doc.getElementById('drawer').classList.contains('hidden'));
   ok('drawer memuat driver', doc.getElementById('drawer-body').textContent.includes('Andi'));
-  ok('drawer memuat uraian', doc.getElementById('drawer-body').textContent.includes('Antar dokumen'));
+  ok('drawer memuat uraian', (doc.getElementById('dr-r0-uraian') || {}).value === 'Antar dokumen');
   ok('drawer punya tombol PDF', Boolean(doc.querySelector('#drawer-footer [data-action="dr-pdf"]')));
 
   doc.querySelector('#drawer-footer [data-action="dr-pdf"]').click();
-  await tick(80);
-  ok('drPdf benar-benar dipanggil', calls.includes('drPdf'));
+  await tick(60);
+  ok('modal tanda tangan muncul sebelum cetak', !doc.getElementById('sig-modal').classList.contains('hidden'));
+  ok('slot daily: kanvas tanda tangan tersedia', Boolean(doc.getElementById('sig-canvas-driver')) && Boolean(doc.getElementById('sig-canvas-mengetahui')));
   ok('saveDr tidak dipanggil dari dashboard', !calls.includes('saveDr'));
-  eq('PDF dibuka di tab baru', opened, ['https://drive.example/dr-12.pdf']);
+  doc.getElementById('sig-name-driver').value = 'Andi Saputra';
+  doc.getElementById('sig-name-mengetahui').value = 'Sari';
+  doc.getElementById('sig-confirm').click();
+  await tick(60);
+  ok('area cetak daily tampil', !doc.getElementById('print-daily').classList.contains('hidden'));
+  ok('tanda tangan driver masuk ke area cetak', doc.getElementById('pd-ttd-driver').textContent.includes('Andi Saputra'));
+  ok('tanda tangan mengetahui masuk ke area cetak', doc.getElementById('pd-ttd-mengetahui').textContent.includes('Sari'));
 
   console.log('\n--- halaman Checklist ---');
   doc.querySelector('[data-page="checklist"]').click();
@@ -393,8 +400,18 @@ async function run() {
   await tick();
   doc.querySelector('[data-action="print"]').click();
   await tick(60);
+  ok('modal tanda tangan muncul sebelum cetak transport', !doc.getElementById('sig-modal').classList.contains('hidden'));
+  ok('slot transport: kanvas tanda tangan tersedia', Boolean(doc.getElementById('sig-canvas-pemohon')) && Boolean(doc.getElementById('sig-canvas-disetujui')));
+  doc.getElementById('sig-name-pemohon').value = 'Budi Santoso';
+  doc.getElementById('sig-role-pemohon').value = 'Karyawan';
+  doc.getElementById('sig-name-disetujui').value = 'Sari';
+  doc.getElementById('sig-confirm').click();
+  await tick(60);
   ok('area cetak transport tampil', !doc.getElementById('print-transport').classList.contains('hidden'));
   ok('nomor surat masuk ke area cetak', doc.getElementById('p-nosurat').textContent.length > 0);
+  ok('tanda tangan pemohon masuk ke area cetak', doc.getElementById('p-ttd-pemohon').textContent.includes('Budi Santoso'));
+  ok('jabatan pemohon ikut tercetak', doc.getElementById('p-ttd-pemohon').textContent.includes('Karyawan'));
+  ok('tanda tangan disetujui masuk ke area cetak', doc.getElementById('p-ttd-approve').textContent.includes('Sari'));
 
   console.log('\n--- email & hapus ---');
   doc.querySelector('[data-page="overview"]').click();

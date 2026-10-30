@@ -9,7 +9,7 @@
 import { api } from "../api";
 import { CONFIG } from "../config";
 import type { CkDamage, CkItem, CkSaveResult, DrCkMaster } from "../schema";
-import { $, esc, field$, isoToSlash, print, toast, todayISO, icon, orDash, must, emptyRow } from "../ui";
+import { $, esc, field$, isoToSlash, print, type Signatures, toast, todayISO, icon, orDash, must, emptyRow } from "../ui";
 import { message } from "./transport";
 import { store } from "../store";
 
@@ -744,7 +744,7 @@ export function reset(): void {
 
 /* ---------- Cetak ---------- */
 
-export function printRow(): void {
+export function printRow(sigs?: Signatures): void {
   const kendaraan = $<HTMLInputElement>("ck-kendaraan")?.value ?? "";
   const driver = $<HTMLInputElement>("ck-driver")?.value ?? "";
   const tanggal = $<HTMLInputElement>("ck-tanggal")?.value ?? "";
@@ -765,7 +765,10 @@ export function printRow(): void {
   print.set('pc-bbmMasuk', bbmMasuk);
   print.set('pc-bbmKeluar', bbmKeluar);
   print.set('pc-keterangan', keterangan);
-  print.set('pc-diperiksa', diperiksaOleh);
+  const ttd = sigs?.diperiksa;
+  print.set('pc-diperiksa', ttd?.name || diperiksaOleh);
+  const ttdEl = document.getElementById("pc-ttd");
+  if (ttdEl) ttdEl.innerHTML = ttd?.image ? `<img src="${ttd.image}" alt="" style="height:40px">` : "";
 
   const itemsBox = document.getElementById('pc-items');
   if (itemsBox) {

@@ -9,7 +9,7 @@ import './styles.css';
 import { api, invalidateAll } from './api';
 import { CONFIG } from './config';
 import { store } from './store';
-import { $, drawer, esc, field$, icon, must, toast } from './ui';
+import { $, askSignature, drawer, esc, field$, icon, must, toast } from './ui';
 import * as overview from './pages/overview';
 import * as transport from './pages/transport';
 import * as inventaris from './pages/inventaris';
@@ -256,7 +256,7 @@ const INVENTARIS_PAGE: Page = {
                 <th class="px-4 py-3.5 min-w-56">Barang</th>
                 <th class="px-4 py-3.5 whitespace-nowrap">Tgl Pinjam</th>
                 <th class="px-4 py-3.5 whitespace-nowrap">Rencana Kembali</th>
-                <th class="px-4 py-3.5 min-w-40">Keperluan</th>
+                <th class="px-4 py-3.5 min-w-40">Keperluan</th>
                 <th class="px-4 py-3.5 whitespace-nowrap">Tgl Kembali Aktual</th>
                 <th class="px-4 py-3.5 text-right whitespace-nowrap">Aksi</th>
               </tr>
@@ -494,9 +494,9 @@ const PRINT_AREAS = `
     <div class="text-right" style="margin:0 10px 10px 0;font-size:9pt">Balikpapan, <span id="p-tglcetak"></span></div>
     <table class="w-full text-center" style="margin-top:5px;font-size:9pt">
       <tr>
-        <td style="width:50%"><strong>Disetujui,</strong><br><br><br><br>(.......................................)<br>
+        <td style="width:50%"><strong>Disetujui,</strong><br><br><br><br><span id="p-ttd-approve" style="font-size:9pt"></span><br>(.......................................)<br>
           <span style="font-size:8pt;font-style:italic">(Facility Department)</span></td>
-        <td style="width:50%"><strong>Pemohon,</strong><br><br><br><br>(.......................................)</td>
+        <td style="width:50%"><strong>Pemohon,</strong><br><br><br><br><span id="p-ttd-pemohon" style="font-size:9pt"></span><br>(.......................................)</td>
       </tr>
     </table>
     <table class="w-full italic" style="margin-top:15px;font-size:7.5pt">
@@ -548,9 +548,9 @@ const PRINT_AREAS = `
     </div>
     <table class="w-full text-center font-bold" style="margin-top:6px;font-size:8pt">
       <tr>
-        <td style="width:33%">Peminjam,<br><br><br><br>(.......................)</td>
-        <td style="width:34%">Mengetahui,<br><br><br><br>(.......................)</td>
-        <td style="width:33%">Menyetujui,<br><br><br><br>(.......................)</td>
+        <td style="width:33%">Peminjam,<br><br><br><br><span id="pi-ttd-peminjam" style="font-size:8pt"></span><br>(.......................)</td>
+        <td style="width:34%">Mengetahui,<br><br><br><br><span id="pi-ttd-mengetahui" style="font-size:8pt"></span><br>(.......................)</td>
+        <td style="width:33%">Menyetujui,<br><br><br><br><span id="pi-ttd-menyetujui" style="font-size:8pt"></span><br>(.......................)</td>
       </tr>
     </table>
   </div>
@@ -621,30 +621,19 @@ const PRINT_AREAS = `
               <td style="border:1.5px solid #000;padding:0">
                 <table width="110" cellspacing="0" cellpadding="0" style="border-collapse:collapse">
                   <tr><th style="border-bottom:1px solid #000;padding:1px">Mengetahui</th></tr>
-                  <tr><td style="height:26px"></td></tr>
+                  <tr><td style="height:26px;font-size:7pt" id="pd-ttd-mengetahui"></td></tr>
                 </table>
               </td>
               <td style="border:1.5px solid #000;border-left:none;padding:0">
                 <table width="110" cellspacing="0" cellpadding="0" style="border-collapse:collapse">
                   <tr><th style="border-bottom:1px solid #000;padding:1px">Driver / Operator</th></tr>
-                  <tr><td style="height:26px"></td></tr>
+                  <tr><td style="height:26px;font-size:7pt" id="pd-ttd-driver"></td></tr>
                 </table>
               </td>
             </tr>
           </table>
         </td>
-        <td width="50%" align="right" valign="top">
-          <table cellspacing="0" cellpadding="0" style="border-collapse:collapse;text-align:center;font-size:7pt">
-            <tr>
-              <td style="border:1.5px solid #000;padding:0">
-                <table width="110" cellspacing="0" cellpadding="0" style="border-collapse:collapse">
-                  <tr><th style="border-bottom:1px solid #000;padding:1px">Driver / Operator</th></tr>
-                  <tr><td style="height:26px"></td></tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </td>
+        <td width="50%" align="right" valign="top"></td>
       </tr>
     </table>
     <div style="font-size:6.5pt;font-style:italic;margin-top:2px">
@@ -768,7 +757,7 @@ const PRINT_AREAS = `
         <div style="font-size:8pt;font-weight:bold;color:surface-600;text-transform:uppercase">BELAKANG</div>
     </div>
     <div style="margin:6px 0"><b>Keterangan:</b> <span id="pc-keterangan"></span></div>
-    <div><b>Diperiksa oleh:</b> <span id="pc-diperiksa"></span></div>
+    <div><b>Diperiksa oleh:</b> <span id="pc-diperiksa"></span> <span id="pc-ttd" style="font-style:italic"></span></div>
   </div>
 </div>`;
 
@@ -788,14 +777,36 @@ const ACTIONS: Record<string, Handler> = {
   save: (_el, id) => transport.save(id),
   create: () => transport.create(),
   'create-new': () => transport.openCreate(),
-  print: (el, id) => transport.printRow(id, el.dataset.from === 'drawer'),
+  print: (el, id) => {
+    const fromDrawer = el.dataset.from === 'drawer';
+    const prefill = store.transport.find((t) => t.rowId === id)?.nama ?? '';
+    askSignature(
+      'Cetak Permintaan Transportasi',
+      [
+        { key: 'disetujui', label: 'Disetujui', role: 'Facility Department' },
+        { key: 'pemohon', label: 'Pemohon', prefillName: prefill, required: true },
+      ],
+      (sigs) => transport.printRow(id, fromDrawer, sigs),
+    );
+  },
   email: (el, id) => transport.email([id], el as HTMLButtonElement),
   delete: (_el, id) => transport.remove(id),
   export: () => transport.exportCsv(),
 
   'inv-open': (_el, id) => inventaris.openDrawer(id),
   'inv-save': (_el, id) => inventaris.save(id),
-  'inv-print': (_el, id) => inventaris.printRow(id),
+  'inv-print': (_el, id) => {
+    const prefill = store.inventaris.find((i) => i.rowId === id)?.nama ?? '';
+    askSignature(
+      'Cetak Form Peminjaman Inventaris',
+      [
+        { key: 'peminjam', label: 'Peminjam', prefillName: prefill, required: true },
+        { key: 'mengetahui', label: 'Mengetahui' },
+        { key: 'menyetujui', label: 'Menyetujui' },
+      ],
+      (sigs) => inventaris.printRow(id, sigs),
+    );
+  },
   'inv-all-good': () => inventaris.setAllGood(),
   'inv-status': (el) => inventaris.onStatusChange(el as HTMLSelectElement),
 
@@ -805,10 +816,27 @@ const ACTIONS: Record<string, Handler> = {
   'send-selected': (el) => overview.sendSelected(el as HTMLButtonElement),
 
   'dr-open': (_el, id) => dailyReport.openDrawer(id),
-  'dr-pdf': (_el, id) => dailyReport.printPdf(id),
+  'dr-pdf': (_el, id) => {
+    const prefill = store.dailyReports.find((d) => d.rowId === id)?.driver ?? '';
+    askSignature(
+      'Cetak Surat Tugas / Daily Report',
+      [
+        { key: 'mengetahui', label: 'Mengetahui' },
+        { key: 'driver', label: 'Driver / Operator', prefillName: prefill, required: true },
+      ],
+      (sigs) => dailyReport.printPdf(id, sigs),
+    );
+  },
 
   'ck-save': () => checklist.save(),
-  'ck-print': () => checklist.printRow(),
+  'ck-print': () => {
+    const prefill = $<HTMLInputElement>('ck-diperiksaOleh')?.value ?? '';
+    askSignature(
+      'Cetak Checklist Kendaraan',
+      [{ key: 'diperiksa', label: 'Diperiksa oleh', prefillName: prefill, required: true }],
+      (sigs) => checklist.printRow(sigs),
+    );
+  },
   'ck-reset': () => checklist.reset(),
   'ck-semuaBaik': () => checklist.semuaBaik(),
   'ck-catat': () => checklist.catat(),
@@ -817,7 +845,6 @@ const ACTIONS: Record<string, Handler> = {
   'cl-open': (_el, id) => clOpenDetail(id),
   'cl-print': (_el, id) => clPrintChecklist(id),
 };
-
 /* =====================================================
    ROUTER
    ===================================================== */

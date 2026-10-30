@@ -20,6 +20,8 @@ import {
   must,
   orDash,
   print,
+  signatureHtml,
+  type Signatures,
   toast,
 } from '../ui';
 import { message, report } from './transport';
@@ -326,7 +328,7 @@ if (typeof window !== 'undefined') {
 
 /* ---------- Cetak ---------- */
 
-export function printPdf(rowId: number): void {
+export function printPdf(rowId: number, sigs?: Signatures): void {
   const item = store.dailyReports.find((i) => i.rowId === rowId);
   if (!item) {
     toast('Daily Report tidak ditemukan.', 'error');
@@ -337,8 +339,9 @@ export function printPdf(rowId: number): void {
   print.set('pd-hari', item.hari);
   print.set('pd-tanggal', item.tanggal);
   print.set('pd-driver', item.driver);
-  print.set('pd-driver2', item.driver);
   print.set('pd-id', item.id || `DR-${rowId}`);
+  print.setHtml('pd-ttd-mengetahui', signatureHtml(sigs?.mengetahui));
+  print.setHtml('pd-ttd-driver', signatureHtml(sigs?.driver));
 
   const tbody = document.getElementById('pd-rows');
   if (tbody) {

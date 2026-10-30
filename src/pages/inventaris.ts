@@ -22,7 +22,9 @@ import {
   print,
   readForm,
   must,
+  signatureHtml,
   slashToIso,
+  type Signatures,
   toast,
   todayISO,
 } from '../ui';
@@ -317,7 +319,7 @@ export async function save(rowId: number): Promise<void> {
 
 /* ---------- Cetak ---------- */
 
-export function printRow(rowId: number): void {
+export function printRow(rowId: number, sigs?: Signatures): void {
   const item = store.inventaris.find((i) => i.rowId === rowId);
   if (!item) {
     toast('Data peminjaman tidak ditemukan.', 'error');
@@ -325,6 +327,11 @@ export function printRow(rowId: number): void {
   }
 
   print.show('inventaris');
+  // Semua kolom tanda tangan diisi dari popup: Peminjam wajib,
+  // Mengetahui/Menyetujui boleh kosong (ditandatangani manual).
+  print.setHtml('pi-ttd-peminjam', signatureHtml(sigs?.peminjam));
+  print.setHtml('pi-ttd-mengetahui', signatureHtml(sigs?.mengetahui));
+  print.setHtml('pi-ttd-menyetujui', signatureHtml(sigs?.menyetujui));
   print.set('pi-nama', item.nama);
   print.set('pi-kontak', item.kontak);
   print.set('pi-tglpinjam', item.tglPinjam);

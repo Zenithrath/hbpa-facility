@@ -4,7 +4,20 @@
  */
 import { store } from '../store';
 import { api } from '../api';
-import { field$, $, esc, icon, orDash, must, debounce } from '../ui';
+import {
+  $,
+  askSignature,
+  debounce,
+  drawer,
+  esc,
+  field$,
+  icon,
+  must,
+  orDash,
+  print,
+  type Signatures,
+  toast,
+} from '../ui';
 
 interface Page {
   title: string;
@@ -180,12 +193,11 @@ export { CHECKLIST_LIST_PAGE as checklistListPage };
 export function openDetail(rowId: number): void {
   const item = store.checklist.find((i: ClistItem) => i.rowId === rowId);
   if (!item) {
-    import('../ui').then(({ toast }) => toast('Data tidak ditemukan.', 'error'));
+    toast('Data tidak ditemukan.', 'error');
     return;
   }
 
-  import('../ui').then(({ drawer, esc }) => {
-    drawer.open({
+  drawer.open({
       title: 'Detail Checklist Kendaraan',
       body: `
         <div class="space-y-4">
@@ -214,63 +226,34 @@ export function openDetail(rowId: number): void {
         </div>`,
       footer: `
         <button class="btn-primary" data-action="cl-print" data-id="${rowId}">${icon('print')} Cetak</button>`,
-    });
   });
 }
 
-/** Cetak checklist dengan input tanda tangan terlebih dahulu */
+/** Cetak checklist: minta tanda tangan dulu lewat modal bersama */
 export function printChecklist(rowId: number): void {
   const item = store.checklist.find((i: ClistItem) => i.rowId === rowId);
   if (!item) {
-    import('../ui').then(({ toast }) => toast('Data tidak ditemukan.', 'error'));
+    toast('Data tidak ditemukan.', 'error');
     return;
   }
 
-  import('../ui').then(({ drawer, esc, toast }) => {
-    drawer.open({
-      title: 'Tanda Tangan',
-      body: `
-        <div class="space-y-4">
-          <p class="text-sm text-surface-600">Masukkan nama untuk tanda tangan sebelum cetak:</p>
-          <div>
-            <label class="field-label" for="cl-sign-name">Nama Penanda Tangan</label>
-            <input id="cl-sign-name" type="text" class="field" placeholder="Nama lengkap" value="${esc(item.driver)}">
-          </div>
-          <div>
-            <label class="field-label" for="cl-sign-role">Jabatan</label>
-            <input id="cl-sign-role" type="text" class="field" placeholder="Jabatan" value="Diperiksa oleh">
-          </div>
-        </div>`,
-      footer: `
-        <button class="btn-primary" id="cl-confirm-print" data-id="${rowId}">${icon('print')} Cetak Sekarang</button>`,
-    });
-
-    // Bind event setelah drawer terbuka
-    setTimeout(() => {
-      const btn = $('cl-confirm-print');
-      btn?.addEventListener('click', () => {
-        const name = (field$('cl-sign-name')?.value ?? '').trim();
-        const role = (field$('cl-sign-role')?.value ?? '').trim();
-        if (!name) {
-          toast('Nama penanda tangan wajib diisi.', 'error');
-          return;
-        }
-        import('../ui').then(({ drawer }) => drawer.close());
-        executePrint(item, name, role);
-      });
-    }, 100);
-  });
+  askSignature(
+    'Cetak Checklist Kendaraan',
+    [{ key: 'diperiksa', label: 'Diperiksa oleh', prefillName: item.driver, required: true }],
+    (sigs) => executePrint(item, sigs),
+  );
 }
 
 /** Eksekusi cetak setelah tanda tangan terisi */
-function executePrint(item: ClistItem, signerName: string, signerRole: string): void {
-  import('../ui').then((ui) => {
-    ui.print.show('checklist');
-    ui.print.set('pc-tanggal', item.tanggal || '-');
-    ui.print.set('pc-nopol', item.kendaraan || '-');
-    ui.print.set('pc-driver', item.driver || '-');
-    ui.print.set('pc-keterangan', item.keterangan || '-');
-    ui.print.set('pc-diperiksa', `${signerName} (${signerRole})`);
-    ui.print.run();
-  });
+function executePrint(item: ClistItem, sigs: Signatures): void {
+  print.show('checklist');
+  print.set('pc-tanggal', item.tanggal || '-');
+  print.set('pc-nopol', item.kendaraan || '-');
+  print.set('pc-driver', item.driver || '-');
+  print.set('pc-keterangan', item.keterangan || '-');
+  const ttd = sigs.diperiksa;
+  print.set('pc-diperiksa', ttd?.name || item.driver);
+  const ttdEl = document.getElementById('pc-ttd');
+  if (ttdEl) ttdEl.innerHTML = ttd?.image ? `<img src="${ttd.image}" alt="" style="height:40px">` : '';
+  print.run();
 }

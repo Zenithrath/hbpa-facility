@@ -28,6 +28,8 @@ import {
   print,
   readForm,
   must,
+  signatureHtml,
+  type Signatures,
   statusBadge,
   toast,
 } from '../ui';
@@ -247,7 +249,7 @@ export async function save(rowId: number): Promise<void> {
 
 /* ---------- Cetak ---------- */
 
-export function printRow(rowId: number, fromDrawer = false): void {
+export function printRow(rowId: number, fromDrawer = false, sigs?: Signatures): void {
   const item = store.transport.find((i) => i.rowId === rowId);
   if (!item) {
     toast('Data permintaan tidak ditemukan.', 'error');
@@ -268,6 +270,8 @@ export function printRow(rowId: number, fromDrawer = false): void {
   print.set('p-nopol', source.nopol);
   print.set('p-keperluan', source.keperluan);
   print.set('p-tglcetak', todayLong());
+  print.setHtml('p-ttd-approve', signatureHtml(sigs?.disetujui));
+  print.setHtml('p-ttd-pemohon', signatureHtml(sigs?.pemohon));
   print.run();
 }
 

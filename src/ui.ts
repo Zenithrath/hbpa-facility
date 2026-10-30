@@ -276,12 +276,242 @@ export const print = {
     if (el) el.textContent = orDash(value);
   },
 
+  /** Isi slot area cetak dengan HTML (mis. gambar tanda tangan + nama). */
+  setHtml(id: string, html: string): void {
+    const el = $(id);
+    if (el) el.innerHTML = html;
+  },
+
   run(): void {
     window.setTimeout(() => window.print(), 150);
   },
 };
 
 window.addEventListener('afterprint', () => print.hide());
+
+/* ---------- Modal tanda tangan sebelum cetak ---------- */
+
+/** Satu kolom tanda tangan pada dokumen (berbeda tiap format cetak). */
+export interface SignatureSlot {
+  key: string;
+  label: string;
+  prefillName?: string;
+  role?: string;
+  /** Wajib diisi sebelum cetak. */
+  required?: boolean;
+}
+
+export interface SignatureValue {
+  name: string;
+  role: string;
+  /** PNG hasil gambar di kanvas, null bila tidak digambar. */
+  image: string | null;
+}
+
+export type Signatures = Record<string, SignatureValue>;
+
+const SIG_NAME_KEY = 'hbpa-sig-name-';
+const SIG_ROLE_KEY = 'hbpa-sig-role-';
+
+let sigModalEl: HTMLElement | null = null;
+let sigSlots: SignatureSlot[] = [];
+let sigOnConfirm: ((sigs: Signatures) => void) | null = null;
+let sigDrawers: Record<string, { clear: () => void; data: () => string | null }> = {};
+
+function closeSigModal(): void {
+  sigModalEl?.classList.add('hidden');
+  sigOnConfirm = null;
+}
+
+/** HTML tanda tangan (gambar hasil gambar + nama/jabatan) untuk area cetak. */
+export function signatureHtml(sig?: SignatureValue): string {
+  if (!sig?.name) return '';
+  const img = sig.image
+    ? `<img src="${sig.image}" alt="" style="height:40px;display:block;margin:0 auto">`
+    : '';
+  const who = sig.role
+    ? `${esc(sig.name)}<br><span style="font-size:7pt;line-height:1">(${esc(sig.role)})</span>`
+    : esc(sig.name);
+  // line-height 1 supaya nama dan jabatan mepet (dua baris tanpa jarak).
+  return `${img}<span style="font-size:8pt;line-height:1;display:block">${who}</span>`;
+}
+
+/** Pasang gambar tanda tangan (pointer/mouse/touch) di satu kanvas. */
+function wireSigCanvas(canvas: HTMLCanvasElement): { clear: () => void; data: () => string | null } {
+  const ctx = typeof canvas.getContext === 'function' ? canvas.getContext('2d') : null;
+  if (ctx) {
+    ctx.strokeStyle = '#111827';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+  }
+  let drawing = false;
+  let ink = false;
+  const point = (e: PointerEvent) => {
+    const r = canvas.getBoundingClientRect();
+    return {
+      x: ((e.clientX - r.left) / (r.width || 1)) * canvas.width,
+      y: ((e.clientY - r.top) / (r.height || 1)) * canvas.height,
+    };
+  };
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!ctx) return;
+    drawing = true;
+    ink = true;
+    const p = point(e);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(p.x + 0.01, p.y);
+    ctx.stroke();
+    e.preventDefault();
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!drawing || !ctx) return;
+    const p = point(e);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+  });
+  const stop = () => {
+    drawing = false;
+  };
+  canvas.addEventListener('pointerup', stop);
+  canvas.addEventListener('pointerleave', stop);
+  canvas.addEventListener('pointercancel', stop);
+  return {
+    clear() {
+      ctx?.clearRect(0, 0, canvas.width, canvas.height);
+      ink = false;
+    },
+    data() {
+      if (!ink) return null;
+      try {
+        return canvas.toDataURL('image/png');
+      } catch {
+        return null;
+      }
+    },
+  };
+}
+
+function confirmSignatures(): void {
+  const sigs: Signatures = {};
+  for (const slot of sigSlots) {
+    const name = (field$(`sig-name-${slot.key}`)?.value ?? '').trim();
+    if (slot.required && !name) {
+      toast(`Nama ${slot.label} wajib diisi.`, 'error');
+      field$(`sig-name-${slot.key}`)?.focus();
+      return;
+    }
+    const role = (field$(`sig-role-${slot.key}`)?.value ?? '').trim();
+    if (name) {
+      try {
+        localStorage.setItem(SIG_NAME_KEY + slot.key, name);
+        localStorage.setItem(SIG_ROLE_KEY + slot.key, role);
+      } catch {
+        // localStorage bisa penuh/di-block; tidak fatal.
+      }
+    }
+    sigs[slot.key] = {
+      name,
+      role,
+      image: name ? (sigDrawers[slot.key]?.data() ?? null) : null,
+    };
+  }
+  const cb = sigOnConfirm;
+  closeSigModal();
+  cb?.(sigs);
+}
+
+/**
+ * Pop up tanda tangan sebelum cetak. Tiap format dokumen punya daftar kolom
+ * tanda tangan berbeda (slot); setiap slot punya nama, jabatan, dan kanvas
+ * gambar tanda tangan. Nama/jabatan terakhir diingat di localStorage.
+ */
+export function askSignature(
+  title: string,
+  slots: SignatureSlot[],
+  onConfirm: (sigs: Signatures) => void,
+): void {
+  if (!sigModalEl) {
+    sigModalEl = document.createElement('div');
+    sigModalEl.id = 'sig-modal';
+    sigModalEl.className = 'no-print fixed inset-0 z-[60] hidden';
+    sigModalEl.innerHTML = `
+      <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" data-sig-cancel></div>
+      <div class="absolute top-1/2 left-1/2 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-6 shadow-2xl">
+        <h3 class="text-base font-bold">Tanda Tangan</h3>
+        <p class="mt-1 text-sm text-surface-500" id="sig-title"></p>
+        <div id="sig-slots" class="mt-4 max-h-[60vh] space-y-4 overflow-y-auto pr-1"></div>
+        <div class="mt-5 flex justify-end gap-2">
+          <button class="btn-slate px-4 py-2" data-sig-cancel>Batal</button>
+          <button class="btn-primary px-4 py-2" id="sig-confirm">Cetak</button>
+        </div>
+      </div>`;
+    document.body.appendChild(sigModalEl);
+
+    sigModalEl.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-sig-cancel]')) closeSigModal();
+    });
+
+    $('sig-confirm')?.addEventListener('click', confirmSignatures);
+  }
+
+  sigSlots = slots;
+  sigDrawers = {};
+  sigOnConfirm = onConfirm;
+
+  const titleEl = $('sig-title');
+  if (titleEl) titleEl.textContent = title;
+
+  const box = $('sig-slots');
+  if (!box) return;
+
+  box.innerHTML = slots
+    .map((slot) => {
+      let savedName = '';
+      let savedRole = '';
+      try {
+        savedName = localStorage.getItem(SIG_NAME_KEY + slot.key) ?? '';
+        savedRole = localStorage.getItem(SIG_ROLE_KEY + slot.key) ?? '';
+      } catch {
+        // abaikan
+      }
+      return `
+      <div class="rounded-xl border border-surface-200 p-3">
+        <div class="flex items-center justify-between gap-2">
+          <label class="field-label" for="sig-name-${esc(slot.key)}">${esc(slot.label)}${slot.required ? ' <span class="text-red-500">*</span>' : ''}</label>
+          ${slot.role ? `<span class="text-[11px] text-surface-400">${esc(slot.role)}</span>` : ''}
+        </div>
+        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <input id="sig-name-${esc(slot.key)}" type="text" class="field" placeholder="Nama penanda tangan" value="${esc(slot.prefillName || savedName || '')}">
+            <input id="sig-role-${esc(slot.key)}" type="text" class="field mt-1" placeholder="Jabatan${slot.role ? '' : ' (opsional)'}" value="${esc(savedRole || slot.role || '')}">
+          </div>
+          <div>
+            <canvas id="sig-canvas-${esc(slot.key)}" width="300" height="90" class="block w-full cursor-crosshair rounded-lg border border-surface-300 bg-white"></canvas>
+            <button type="button" class="mt-1 text-[11px] font-semibold text-surface-400 hover:text-red-600" data-sig-clear="${esc(slot.key)}">Hapus gambar</button>
+          </div>
+        </div>
+      </div>`;
+    })
+    .join('');
+
+  for (const slot of slots) {
+    const canvas = $<HTMLCanvasElement>(`sig-canvas-${slot.key}`);
+    if (canvas && typeof canvas.getContext === 'function') {
+      sigDrawers[slot.key] = wireSigCanvas(canvas);
+    }
+  }
+  box.querySelectorAll<HTMLElement>('[data-sig-clear]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      sigDrawers[btn.getAttribute('data-sig-clear') ?? '']?.clear();
+    });
+  });
+
+  sigModalEl.classList.remove('hidden');
+  window.setTimeout(() => $<HTMLInputElement>(`sig-name-${slots[0]?.key ?? ''}`)?.focus(), 50);
+}
 
 /* ---------- Lain-lain ---------- */
 
