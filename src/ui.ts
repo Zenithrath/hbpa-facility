@@ -291,8 +291,10 @@ export const print = {
     document.getElementById('hbpa-print-page')?.remove();
     const style = document.createElement('style');
     style.id = 'hbpa-print-page';
-    const portrait = this.currentTarget === 'transport';
-    style.textContent = `@media print { @page { size: A5 ${portrait ? 'portrait' : 'landscape'}; margin: 2mm; } }`;
+    let size = 'A5 landscape';
+    if (this.currentTarget === 'transport') size = 'A5 portrait';
+    if (this.currentTarget === 'checklist') size = 'A4 portrait';
+    style.textContent = `@media print { @page { size: ${size}; margin: 2mm; } }`;
     document.head.appendChild(style);
     window.setTimeout(() => window.print(), 150);
   },
@@ -338,7 +340,7 @@ function closeSigModal(): void {
 export function signatureHtml(sig?: SignatureValue): string {
   if (!sig?.name) return '';
   const img = sig.image
-    ? `<img src="${sig.image}" alt="" style="height:40px;display:block;margin:0 auto">`
+    ? `<img src="${sig.image}" alt="" style="height:42px;display:block;margin:0 auto">`
     : '';
   const who = sig.role
     ? `${esc(sig.name)}<br><span style="font-size:7pt;line-height:1">(${esc(sig.role)})</span>`

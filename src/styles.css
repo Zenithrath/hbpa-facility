@@ -101,7 +101,8 @@
 
 #print-transport:not(.hidden),
 #print-inventaris:not(.hidden),
-#print-daily:not(.hidden) {
+#print-daily:not(.hidden),
+#print-checklist:not(.hidden) {
   position: absolute;
   inset: 0 auto auto 0;
   width: 100%;
@@ -120,7 +121,9 @@
   #print-inventaris:not(.hidden),
   #print-inventaris:not(.hidden) *,
   #print-daily:not(.hidden),
-  #print-daily:not(.hidden) * {
+  #print-daily:not(.hidden) *,
+  #print-checklist:not(.hidden),
+  #print-checklist:not(.hidden) * {
     visibility: visible !important;
   }
   .no-print,
@@ -132,7 +135,8 @@
   }
   #print-transport:not(.hidden),
   #print-inventaris:not(.hidden),
-  #print-daily:not(.hidden) {
+  #print-daily:not(.hidden),
+  #print-checklist:not(.hidden) {
     position: fixed !important;
     top: 0;
     left: 0;

@@ -4,6 +4,8 @@
  */
 import { store } from '../store';
 import { api } from '../api';
+import type { CkHeader } from '../schema';
+import { renderChecklistPaper } from './checklist-paper';
 import {
   $,
   askSignature,
@@ -35,6 +37,18 @@ interface ClistItem {
   driver: string;
   kendaraan: string;
   keterangan: string;
+}
+
+let ckDocs: CkHeader[] = [];
+
+async function ensureCkDocs(): Promise<CkHeader[]> {
+  if (ckDocs.length) return ckDocs;
+  try {
+    ckDocs = (await api.getCkDocuments()) || [];
+  } catch {
+    ckDocs = [];
+  }
+  return ckDocs;
 }
 
 function renderList(): void {
@@ -156,11 +170,11 @@ const CHECKLIST_LIST_PAGE: Page = {
       </div>
     </div>`,
   mount(): void {
-    // Load checklist data from API, lalu render setelah data siap.
-    api
-      .listChecklist()
-      .then((items) => {
+    // Load ringkasan + dokumen lengkap checklist, lalu render setelah data siap.
+    Promise.all([api.listChecklist(), api.getCkDocuments()])
+      .then(([items, docs]) => {
         store.checklist = items || [];
+        ckDocs = docs || [];
         renderList();
       })
       .catch(() => toast('Gagal memuat data checklist.', 'error'));
@@ -191,70 +205,57 @@ const CHECKLIST_LIST_PAGE: Page = {
 export { CHECKLIST_LIST_PAGE as checklistListPage };
 
 /** Buka detail checklist di drawer */
-export function openDetail(rowId: number): void {
+export async function openDetail(rowId: number): Promise<void> {
   const item = store.checklist.find((i: ClistItem) => i.rowId === rowId);
-  if (!item) {
+  const docs = await ensureCkDocs();
+  const doc = docs.find((d: CkHeader) => d.rowId === rowId);
+  if (!item && !doc) {
     toast('Data tidak ditemukan.', 'error');
     return;
   }
 
+  const d = doc;
+
+  const bodyEl = must('drawer-body');
+  const prevOverflow = bodyEl.style.overflow;
+  bodyEl.style.overflow = 'hidden';
+  const originalClose = drawer.close;
+  drawer.close = () => {
+    bodyEl.style.overflow = prevOverflow;
+    originalClose();
+    drawer.close = originalClose;
+  };
+
   drawer.open({
       title: 'Detail Checklist Kendaraan',
-      body: `
-        <div class="space-y-4">
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <div class="text-xs font-bold text-surface-500 uppercase">No Dokumen</div>
-              <div class="mt-1 text-sm font-semibold">${esc(item.noDok || `Form #${item.rowId}`)}</div>
-            </div>
-            <div>
-              <div class="text-xs font-bold text-surface-500 uppercase">Tanggal</div>
-              <div class="mt-1 text-sm">${esc(item.tanggal)}</div>
-            </div>
-            <div>
-              <div class="text-xs font-bold text-surface-500 uppercase">Driver</div>
-              <div class="mt-1 text-sm font-semibold">${esc(item.driver)}</div>
-            </div>
-            <div>
-              <div class="text-xs font-bold text-surface-500 uppercase">Kendaraan</div>
-              <div class="mt-1 text-sm">${esc(item.kendaraan)}</div>
-            </div>
-          </div>
-          <div>
-            <div class="text-xs font-bold text-surface-500 uppercase">Keterangan</div>
-            <div class="mt-1 text-sm">${esc(item.keterangan)}</div>
-          </div>
-        </div>`,
-      footer: `
-        <button class="btn-primary" data-action="cl-print" data-id="${rowId}">${icon('print')} Cetak</button>`,
+      body: '<div style="transform:scale(0.64);transform-origin:top left;width:595.28pt;height:539pt;overflow:auto">' +
+            renderChecklistPaper(d, item) +
+            '</div>',
+      footer: '<button class="btn-primary" data-action="cl-print" data-id="' + rowId + '">Cetak</button>',
   });
 }
 
 /** Cetak checklist: minta tanda tangan dulu lewat modal bersama */
-export function printChecklist(rowId: number): void {
+export async function printChecklist(rowId: number): Promise<void> {
+  const docs = await ensureCkDocs();
+  const doc = docs.find((d: CkHeader) => d.rowId === rowId);
   const item = store.checklist.find((i: ClistItem) => i.rowId === rowId);
-  if (!item) {
+  if (!doc && !item) {
     toast('Data tidak ditemukan.', 'error');
     return;
   }
 
+  const d = doc;
   askSignature(
     'Cetak Checklist Kendaraan',
-    [{ key: 'diperiksa', label: 'Diperiksa oleh', prefillName: item.driver, required: true }],
-    (sigs) => executePrint(item, sigs),
+    [{ key: 'diperiksa', label: 'Diperiksa oleh', prefillName: d?.driver || item?.driver || '', required: true }],
+    (sigs) => printSavedChecklist(d, item, sigs),
   );
 }
 
-/** Eksekusi cetak setelah tanda tangan terisi */
-function executePrint(item: ClistItem, sigs: Signatures): void {
+function printSavedChecklist(doc: CkHeader | undefined, item: ClistItem | undefined, sigs: Signatures): void {
   print.show('checklist');
-  print.set('pc-tanggal', item.tanggal || '-');
-  print.set('pc-nopol', item.kendaraan || '-');
-  print.set('pc-driver', item.driver || '-');
-  print.set('pc-keterangan', item.keterangan || '-');
-  const ttd = sigs.diperiksa;
-  print.set('pc-diperiksa', ttd?.name || item.driver);
-  const ttdEl = document.getElementById('pc-ttd');
-  if (ttdEl) ttdEl.innerHTML = ttd?.image ? `<img src="${ttd.image}" alt="" style="height:40px">` : '';
+  const area = document.getElementById('print-checklist');
+  if (area) area.innerHTML = renderChecklistPaper(doc, item, sigs);
   print.run();
 }
