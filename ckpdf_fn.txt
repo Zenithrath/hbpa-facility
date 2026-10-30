@@ -1,0 +1,64 @@
+function ckPdfHtml_(ck, items, damages) {
+  ck = ck || {};
+  items = items || [];
+  damages = damages || [];
+
+  // Kelompokkan item per grup (urutan sesuai data).
+  var groups = {};
+  var groupOrder = [];
+  items.forEach(function (it) {
+    var g = it.grup || 'Lainnya';
+    if (!groups[g]) { groups[g] = []; groupOrder.push(g); }
+    groups[g].push(it);
+  });
+
+  var html = [];
+  html.push('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Checklist Kendaraan</title>');
+  html.push('<style>body{font-family:Arial,sans-serif;font-size:10px;margin:10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #000;padding:3px}.g{margin:6px 0}.gtitle{font-weight:bold;margin:4px 0}.mark{color:red;font-weight:bold}</style>');
+  html.push('</head><body>');
+  html.push('<h2 style="text-align:center;margin:0">CHECKLIST PEMERIKSAAN KENDARAAN</h2>');
+  html.push('<div style="text-align:center;font-size:9px;margin-bottom:8px">FM-FCL-02.04 Rev 00</div>');
+  html.push('<table style="margin-bottom:8px"><tr><td><b>Counter:</b> ' + (ck.counter || '-') + '</td><td><b>Tipe:</b> ' + (ck.tipeMobil || '-') + '</td><td><b>Driver:</b> ' + (ck.driver || '-') + '</td></tr>');
+  html.push('<tr><td><b>Tanggal:</b> ' + (ck.tanggal || '-') + '</td><td><b>No.Polisi:</b> ' + (ck.noPolisi || '-') + '</td><td><b>KM:</b> ' + (ck.kilometer || '-') + '</td></tr></table>');
+
+  // Solar gauges
+  html.push('<div style="margin:6px 0"><b>Level Solar - MASUK:</b> ' + (ck.bbmMasuk || '-') + ' &nbsp;&nbsp; <b>KELUAR:</b> ' + (ck.bbmKeluar || '-') + '</div>');
+
+  // Items per grup
+  groupOrder.forEach(function (g) {
+    html.push('<div class="g"><div class="gtitle">' + g + ' :</div>');
+    groups[g].forEach(function (it) {
+      var line = '  ' + (it.item || '') + ' : ' + (it.status || 'Baik');
+      if (it.status === 'Rusak' && it.catatan) line += ' (Rusak: ' + it.catatan + ')';
+      html.push('<div>' + line + '</div>');
+    });
+    html.push('</div>');
+  });
+
+  if (ck.keterangan) html.push('<div style="margin:6px 0"><b>Keterangan:</b> ' + ck.keterangan + '</div>');
+  if (ck.diperiksaOleh) html.push('<div><b>Diperiksa oleh:</b> ' + ck.diperiksaOleh + '</div>');
+
+  // Damage marks
+  html.push('<div style="margin:8px 0"><b>Tanda kerusakan:</b></div>');
+  var views = ['ATAS', 'KIRI', 'KANAN', 'DEPAN', 'BELAKANG'];
+  views.forEach(function (v) {
+    var marks = damages.filter(function (d) { return d.view === v; });
+    html.push('<div style="margin:4px 0"><b>' + v + '</b>: ');
+    if (marks.length) {
+      marks.forEach(function (m) {
+        html.push('<span class="mark">✗</span> (' + (m.x || 0) + ',' + (m.y || 0) + ') ' + (m.catatan || '') + ' ');
+      });
+    } else {
+      html.push('-');
+    }
+    html.push('</div>');
+  });
+
+  html.push('</body></html>');
+  return html.join('');
+}
+
+function ckPdfForRow_(rowId) {
+  // Placeholder: checklist PDF generated on demand not implemented; return fail.
+  return fail_('Cetak PDF Checklist belum tersedia.');
+}

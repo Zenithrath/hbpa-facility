@@ -12,6 +12,12 @@ import { CONFIG, requireApiUrl } from './config';
 import type {
   ApiResult,
   BootstrapData,
+  CkHeader,
+  CkSaveResult,
+  DrCkMaster,
+  DrHeader,
+  DrPdfResult,
+  DrSaveResult,
   InventarisItem,
   InventarisLineInput,
   Pagination,
@@ -25,6 +31,16 @@ type Query = Record<string, string | number | boolean | undefined | null>;
 interface CacheEntry {
   at: number;
   value: unknown;
+}
+
+/** Item checklist untuk tampilan daftar. */
+interface ChecklistItem {
+  rowId: number;
+  noDok: string;
+  tanggal: string;
+  driver: string;
+  kendaraan: string;
+  keterangan: string;
 }
 
 const cache = new Map<string, CacheEntry>();
@@ -94,9 +110,13 @@ async function read<T>(action: string, query: Query = {}): Promise<T> {
  * GET yang mengubah data. Sengaja memakai URL terpisah supaya tidak pernah
  * dilayani dari cache browser.
  */
-async function write<T>(action: string, body: Record<string, unknown>): Promise<T> {
+async function write<T>(
+  action: string,
+  body: Record<string, unknown>,
+  maxBytes: number = CONFIG.MAX_WRITE_BYTES,
+): Promise<T> {
   const payload = JSON.stringify(body);
-  if (payload.length > CONFIG.MAX_WRITE_BYTES) {
+  if (payload.length > maxBytes) {
     throw new Error(
       `Data terlalu besar untuk dikirim lewat URL (${payload.length} karakter). ` +
         'Perkecil isi kolom textarea atau pecah jadi dua operasi.',
@@ -184,6 +204,87 @@ export const api = {
     catatan: string;
     lines: InventarisLineInput[];
   }) => write('saveInventaris', body).then(() => invalidate('getInventarisData')),
+
+  /* ---------- Surat Tugas / Daily Report + Checklist Kendaraan ---------- */
+
+  /** Master driver, kendaraan, item checklist, dan pilihan IJN. */
+  getMasters: (): Promise<DrCkMaster> => read('getMasters'),
+
+  getDrDocuments: (): Promise<DrHeader[]> => read('getDrData'),
+
+  /** Buat PDF Surat Tugas on-demand untuk baris Google Form. */
+  getDrPdf: (rowId: number): Promise<DrPdfResult> =>
+    writeParams('drPdf', { rowId }),
+
+  saveDr: (body: {
+    tanggal: string;
+    driver: string;
+    mengetahui: string;
+    rows: {
+      start: string;
+      finish: string;
+      nopol?: string;
+      ijn?: string;
+      namaUser?: string;
+      km?: string;
+      solar?: string;
+      uraian?: string;
+    }[];
+  }): Promise<DrSaveResult> =>
+    write<DrSaveResult>('saveDr', body, CONFIG.MAX_DOC_BYTES).then((result) => {
+      invalidate('getDrData');
+      return result;
+    }),
+
+  getCkDocuments: (): Promise<CkHeader[]> => read('getCkData'),
+
+  /** Daftar data checklist dari spreadsheet ke format ChecklistItem. */
+  listChecklist: (): Promise<ChecklistItem[]> =>
+    read<CkHeader[]>('getCkData').then((docs) =>
+      docs.map((doc: CkHeader, index: number) => ({
+        rowId: doc.rowId ?? index,
+        noDok: '',
+        tanggal: doc.tanggal ?? '',
+        driver: doc.driver ?? '',
+        kendaraan: doc.tipeMobil ?? '',
+        keterangan: doc.keterangan ?? '',
+      })) as ChecklistItem[],
+    ),
+
+  saveCk: (body: {
+    tanggal: string;
+    counter: string;
+    kendaraan: string;
+    driver: string;
+    kilometer: string;
+    bbmMasuk: string;
+    bbmKeluar: string;
+    keterangan: string;
+    diperiksaOleh: string;
+    items: { grup: string; item: string; status: string; catatan: string }[];
+    damages: { view: string; x: number; y: number; catatan: string }[];
+    pngs: Record<string, string>;
+  }): Promise<CkSaveResult> =>
+    write<CkSaveResult>('saveCk', body, CONFIG.MAX_DOC_BYTES).then((result) => {
+      invalidate('getCkData');
+      return result;
+    }),
+
+  updateDrStatus: (id: string, status: string) =>
+    write('updateDrStatus', { id, status }).then(() => invalidate('getDrData')),
+
+  updateDr: (body: {
+    rowId: number;
+    id: string;
+    hari?: string;
+    tanggal?: string;
+    driver?: string;
+    mengetahui?: string;
+    rows?: { start: string; finish: string; nopol?: string; ijn?: string; namaUser?: string; km?: string; solar?: string; uraian?: string }[];
+  }) => write('updateDr', body).then(() => invalidate('getDrData')),
+
+  updateCkStatus: (id: string, status: string) =>
+    writeParams('updateCkStatus', { id, status }).then(() => invalidate('getCkData')),
 };
 
 export type { Pagination };

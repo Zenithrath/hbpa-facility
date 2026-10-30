@@ -259,14 +259,14 @@ export function isoToSlash(iso: string): string {
 /* ---------- Cetak ---------- */
 
 export const print = {
-  show(target: 'transport' | 'inventaris'): void {
-    for (const key of ['transport', 'inventaris'] as const) {
+  show(target: 'transport' | 'inventaris' | 'daily' | 'checklist'): void {
+    for (const key of ['transport', 'inventaris', 'daily', 'checklist'] as const) {
       $(`print-${key}`)?.classList.toggle('hidden', key !== target);
     }
   },
 
   hide(): void {
-    for (const key of ['transport', 'inventaris'] as const) {
+    for (const key of ['transport', 'inventaris', 'daily', 'checklist'] as const) {
       $(`print-${key}`)?.classList.add('hidden');
     }
   },

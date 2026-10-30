@@ -37,7 +37,7 @@ const INVENTARIS = [
   },
   {
     rowId: 3, sig: '2|Agus|19/10/2026', noDok: 'PB/002', nama: 'Agus', kontak: '08199',
-    tglPinjam: '19/10/2026', tglKembali: '25/10/2026', keperluan: 'Dokumentasi',
+    tglPinjam: '19/10/2026', tglKembali: '31/12/2026', keperluan: 'Dokumentasi',
     status: 'Dipinjam', tglKembaliAktual: '-', catatan: '-',
     items: [{ n: '1', barang: 'Laptop', qty: '1', kondisiAmbil: 'Baik', kondisiKembali: '-' }],
   },
@@ -50,10 +50,83 @@ const BOOTSTRAP = {
   itemColumns: 2,
 };
 
+const MASTERS = {
+  role: 'admin',
+  email: 'bos@hbpa.test',
+  driver: '',
+  drivers: [{ nama: 'Andi', email: 'andi@hbpa.test', status: 'Aktif' }],
+  kendaraan: [{ noPlat: 'KT 8107 YV', tipe: 'Avanza', status: 'Aktif' }],
+  items: [
+    { grup: 'Kaca', item: 'Depan', urut: 1, status: 'Aktif' },
+    { grup: 'Ban', item: 'Serep', urut: 1, status: 'Aktif' },
+  ],
+  ijn: [{ ijn: '001234', tujuan: 'Balikpapan' }],
+  bbmLevels: ['E', '1/4', '1/2', '3/4', 'F'],
+  ckStatuses: ['Baik', 'Rusak', 'Tidak Ada'],
+  views: ['ATAS', 'KIRI', 'KANAN', 'DEPAN', 'BELAKANG'],
+  ckFormCode: 'FM-FCL-02.04',
+  ckRev: '00',
+};
+
+const SAVE_DR = {
+  item: {
+    id: 'DR-20261026-001', hari: 'Senin', tanggal: '26/10/2026',
+    driver: 'Andi', status: 'Baru', linkPdf: 'https://drive.example/dr',
+  },
+  message: 'Surat Tugas tersimpan. PDF siap dicetak.',
+};
+
+const SAVE_CK = {
+  item: {
+    id: 'CK-20261026-001', tanggal: '26/10/2026', noPolisi: 'KT 8107 YV',
+    tipeMobil: 'Avanza', status: 'Baru', linkPdf: 'https://drive.example/ck',
+  },
+  hasRusak: true,
+  message: 'Checklist tersimpan. PDF siap dicetak.',
+};
+
+const DR_DOCS = [
+  {
+    rowId: 12, id: '', hari: 'Rabu', tanggal: '28/10/2026', driver: 'Andi',
+    mengetahui: 'Sari', status: 'Submitted', createdBy: 'andi@hbpa.test',
+    createdAt: '28/10/2026 07:05', linkPdf: '',
+    rows: [
+      {
+        start: '07:00', finish: '09:30', total: '02:30', nopol: 'KT 8107 YV',
+        ijn: '001234', namaUser: 'Dewi', km: '120', solar: '10', uraian: 'Antar dokumen',
+      },
+    ],
+  },
+  {
+    rowId: 11, id: 'DR-20261027-001', hari: 'Selasa', tanggal: '27/10/2026', driver: 'Budi',
+    mengetahui: 'Sari', status: 'Selesai', createdBy: 'budi@hbpa.test',
+    createdAt: '27/10/2026 08:00', linkPdf: 'https://drive.example/dr-11',
+    rows: [
+      {
+        start: '08:00', finish: '10:00', total: '02:00', nopol: 'KT 9999 ZZ',
+        ijn: '009876', namaUser: 'Rina', km: '80', solar: '8', uraian: 'Kirim barang',
+      },
+    ],
+  },
+];
+
+const DR_PDF = {
+  rowId: 12,
+  id: '',
+  filename: 'Surat Tugas Form 12 - Andi.pdf',
+  linkPdf: 'https://drive.example/dr-12.pdf',
+  dataUrl: '',
+};
+
 const RESPONSES = {
   getBootstrap: BOOTSTRAP,
   getRequests: { items: TRANSPORT, pagination: { page: 1, pageSize: 100, total: 2, totalPages: 1 } },
   getInventarisData: INVENTARIS,
+  getMasters: MASTERS,
+  getDrData: DR_DOCS,
+  drPdf: DR_PDF,
+  saveDr: SAVE_DR,
+  saveCk: SAVE_CK,
   updateRequest: { message: 'Tersimpan.' },
   saveInventaris: { message: 'Tersimpan.' },
   sendEmail: { sent: 1 },
@@ -62,6 +135,7 @@ const RESPONSES = {
 
 const calls = [];
 const urls = [];
+const opened = [];
 
 const tick = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 
@@ -110,7 +184,21 @@ function makeDom(code, uncaught, logs) {
   dom.window.fetch = fakeFetch;
   dom.window.confirm = () => true;
   dom.window.print = () => {};
+  dom.window.open = (url) => {
+    const target = String(url ?? '');
+    if (target && target !== 'about:blank') opened.push(target);
+    return {
+      location: {
+        set href(value) {
+          opened.push(String(value));
+        },
+      },
+      close() {},
+    };
+  };
   dom.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+  dom.window.HTMLCanvasElement.prototype.getContext = () => null;
+  dom.window.HTMLCanvasElement.prototype.toDataURL = () => 'data:image/png;base64,AAAA';
   dom.window.eval(code);
   return dom;
 }
@@ -136,7 +224,7 @@ async function run() {
   ok('tidak ada exception', emptyErrors.length === 0);
   ok('pesan API_URL kosong muncul', emptyText().includes('API_URL belum diisi'));
   ok('sidebar tetap dirender', Boolean(emptyDoc.getElementById('sidebar')));
-  ok('3 menu navigasi', emptyDoc.querySelectorAll('#nav [data-page]').length === 3);
+  ok('5 menu navigasi', emptyDoc.querySelectorAll('#nav [data-page]').length === 5);
 
   // ---- Skenario 2: API_URL terisi ----
   const uncaught = [];
@@ -156,6 +244,10 @@ async function run() {
   eq('disetujui', doc.getElementById('s-approved').textContent, '1');
   eq('2 permintaan di daftar email', doc.querySelectorAll('#email-list label').length, 2);
   ok('tidak ada peringatan kolom', !text().includes('tidak ditemukan di spreadsheet'));
+  eq('ringkasan transport', doc.querySelectorAll('#sum-transport [data-sum-row]').length, 2);
+  ok('ringkasan transport memuat nomor surat', doc.getElementById('sum-transport').textContent.includes('TR/202610/001'));
+  eq('ringkasan inventaris', doc.querySelectorAll('#sum-inventaris [data-sum-row]').length, 2);
+  ok('ringkasan inventaris memuat no dokumen', doc.getElementById('sum-inventaris').textContent.includes('PB/001'));
 
   console.log('\n--- pindah ke Daftar Permintaan ---');
   doc.querySelector('[data-page="transport"]').click();
@@ -233,6 +325,68 @@ async function run() {
   const invUrl = [...urls].reverse().find((u) => u.includes('action=saveInventaris')) || '';
   const invSent = JSON.parse(new URL(invUrl).searchParams.get('data'));
   eq('no dokumen dari drawer', invSent.noDok, 'PB/007');
+
+  console.log('\n--- halaman Daily Report ---');
+  doc.querySelector('[data-page="daily"]').click();
+  await tick();
+  eq('judul daily report', doc.getElementById('title').textContent, 'Surat Tugas / Daily Report');
+  eq('2 dokumen tampil', doc.querySelectorAll('#dr-tbody tr').length, 2);
+  ok('tidak ada form input DR', !doc.getElementById('dr-driver'));
+  ok('tidak ada tombol simpan DR', !doc.querySelector('[data-action="dr-save"]'));
+  ok('baris Google Form tanpa ID diberi label', doc.querySelector('#dr-tbody tr').textContent.includes('Form #12'));
+
+  doc.getElementById('dr-q').value = 'antar dokumen';
+  doc.getElementById('dr-q').dispatchEvent(new window.Event('input', { bubbles: true }));
+  await tick(30);
+  eq('pencarian menyaring daftar', doc.querySelectorAll('#dr-tbody tr').length, 1);
+
+  doc.getElementById('dr-q').value = '';
+  doc.getElementById('dr-q').dispatchEvent(new window.Event('input', { bubbles: true }));
+  await tick(30);
+  eq('daftar kembali lengkap', doc.querySelectorAll('#dr-tbody tr').length, 2);
+
+  doc.querySelector('#dr-tbody tr').click();
+  await tick(60);
+  ok('drawer detail terbuka', !doc.getElementById('drawer').classList.contains('hidden'));
+  ok('drawer memuat driver', doc.getElementById('drawer-body').textContent.includes('Andi'));
+  ok('drawer memuat uraian', doc.getElementById('drawer-body').textContent.includes('Antar dokumen'));
+  ok('drawer punya tombol PDF', Boolean(doc.querySelector('#drawer-footer [data-action="dr-pdf"]')));
+
+  doc.querySelector('#drawer-footer [data-action="dr-pdf"]').click();
+  await tick(80);
+  ok('drPdf benar-benar dipanggil', calls.includes('drPdf'));
+  ok('saveDr tidak dipanggil dari dashboard', !calls.includes('saveDr'));
+  eq('PDF dibuka di tab baru', opened, ['https://drive.example/dr-12.pdf']);
+
+  console.log('\n--- halaman Checklist ---');
+  doc.querySelector('[data-page="checklist"]').click();
+  await tick();
+  eq('judul checklist', doc.getElementById('title').textContent, 'Checklist Kendaraan');
+  eq('item dari master tampil', doc.querySelectorAll('#ck-grup .ck-item').length, 2);
+
+  const ckRow = doc.querySelector('#ck-grup .ck-item');
+  const rusak = ckRow.querySelector('input[data-status="Rusak"]');
+  rusak.checked = true;
+  rusak.dispatchEvent(new window.Event('change', { bubbles: true }));
+  ok('catatan muncul saat Rusak', !ckRow.querySelector('[data-catatan]').classList.contains('hidden'));
+  ckRow.querySelector('[data-catatan]').value = 'retak';
+
+  doc.getElementById('ck-kendaraan').value = 'KT 8107 YV';
+  doc.getElementById('ck-driver').value = 'Andi';
+  doc.getElementById('ck-kilometer').value = '62000';
+  doc.getElementById('ck-bbmMasuk').value = '1/2';
+  doc.getElementById('ck-bbmKeluar').value = '1/4';
+  doc.querySelector('[data-action="ck-save"]').click();
+  await tick();
+  ok('saveCk benar-benar dipanggil', calls.includes('saveCk'));
+  const ckUrl = [...urls].reverse().find((u) => u.includes('action=saveCk')) || '';
+  const ckSent = JSON.parse(new URL(ckUrl).searchParams.get('data'));
+  eq('tanggal CK format DD/MM/YYYY', /^\d{2}\/\d{2}\/\d{4}$/.test(ckSent.tanggal), true);
+  eq('items CK terkirim', ckSent.items.length, 2);
+  eq('status rusak terkirim', ckSent.items[0].status, 'Rusak');
+  eq('catatan rusak terkirim', ckSent.items[0].catatan, 'retak');
+  eq('kendaraan CK terkirim', ckSent.kendaraan, 'KT 8107 YV');
+  ok('hasil CK tampil', doc.getElementById('ck-hasil').textContent.includes('CK-'));
 
   console.log('\n--- cetak ---');
   doc.querySelector('[data-page="transport"]').click();

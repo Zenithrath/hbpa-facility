@@ -46,6 +46,8 @@ src/
     overview.ts   kartu statistik + kirim email
     transport.ts  daftar + drawer edit + cetak A5
     inventaris.ts daftar + drawer pengembalian + cetak A5
+    daily-report.ts  daftar Daily Report dari Google Form + cetak PDF
+    checklist.ts     form Checklist Kendaraan + tanda kerusakan
 apps-script/
   Code.gs         serahkan ke pemilik Apps Script
 ```
@@ -75,8 +77,9 @@ Konsekuensinya:
 
 - Seluruh API memakai GET, **termasuk operasi tulis**.
 - Jangan menambah header custom di `fetch` — CORS akan muncul lagi.
-- Payload dibatasi `MAX_WRITE_BYTES` (4000 karakter). Kolom yang sangat
-  panjang akan ditolak dengan pesan jelas.
+- Payload dibatasi `MAX_WRITE_BYTES` (4000 karakter). Dokumen DR/CK memakai
+  `MAX_DOC_BYTES` (50.000 karakter) karena membawa PNG tanda kerusakan;
+  kalau gambar terlalu besar, penanda tetap dikirim tanpa gambar.
 - Side effect di URL `_t=<timestamp>` supaya tidak dilayani dari cache.
 
 **Integritas baris.** Backend memetakan kolom dari *judul* di baris 1, bukan
@@ -103,6 +106,12 @@ Semua fitur dari script aslimu ada di sini:
 - **Email otomatis** tiap ada baris baru (Google Form atau ketik manual)
 - Peminjaman inventaris: kondisi kembali tiap barang, catatan, cetak A5
 - Pemetaan kolom dari **judul** di baris 1, bukan nomor kolom
+- **Surat Tugas / Daily Report (FM-FCL-02.04)** — input lewat Google Form,
+  dashboard menampilkan daftar read-only + detail, PDF A5 landscape dibuat
+  on-demand saat tombol cetak diklik
+- **Checklist Kendaraan (FM-FCL-02.04)** — form web per grup item dari master,
+  gauge solar masuk/kembali, klik-lokasi tanda kerusakan di bodi + catatan,
+  tangkapan PNG, PDF A4 portrait gaya kertas asli
 
 ## Pemasangan di Apps Script
 
@@ -116,6 +125,37 @@ Semua fitur dari script aslimu ada di sini:
 6. Deploy > New deployment > Web app
    Execute as: Me | Who has access: Anyone
 7. Tempel URL /exec ke src/config.ts
+```
+
+### Pemasangan Daily Report & Checklist (DR/CK)
+
+Daily Report memakai **Google Form** sebagai sumber input. Dashboard hanya
+menampilkan daftar read-only, detail, dan tombol cetak PDF; tidak ada form
+input Daily Report di web. Checklist Kendaraan tetap berupa form web dan
+memakai deployment Web App yang sama dengan dashboard.
+
+```
+1. Buat Google Form Daily Report dan hubungkan ke spreadsheet ini. Google
+   Forms membuat tab respons baru; ubah namanya menjadi TAB_DAILYREPORT.
+2. Run setupTabsBaru() sekali -> membuat tab CK dan M_Item. Tab
+   TAB_DAILYREPORT yang sudah ada tidak ditimpa. Tab lama bernama DR
+   otomatis diubah namanya menjadi TAB_DAILYREPORT (kalau tab form sudah
+   memakai nama itu, rapikan dulu salah satu tabnya).
+3. Judul kolom tab Daily Report boleh mengikuti pertanyaan form; backend
+   mengenali alias seperti Timestamp, Nama Driver, Tanggal, No. Plat, IJN,
+   Nama User, KM, Solar, Uraian Pekerjaan, Jam Keluar, dan Jam Kembali.
+   Baris form tanpa ID_DR dianggap satu dokumen per baris.
+4. Buka menu Surat Tugas / Daily Report -> daftar diambil dari Google Form.
+   Tombol Cetak PDF membuat PDF A5 landscape on-demand. Kalau tab punya
+   kolom Link_PDF, tautan PDF disimpan balik ke baris tersebut.
+5. Checklist Kendaraan memakai M_Item untuk daftar periksa. PDF A4 portrait
+   dan foto tanda kerusakan disimpan di folder Drive "HBPA Dokumen DR-CK";
+   ID folder di-cache otomatis di Script Property (hapus DRCK_FOLDER_ID bila
+   folder dipindah).
+6. Menyimpan/mencetak DR dan CK tidak mengirim email. Email otomatis hanya
+   dipakai untuk permintaan transport.
+7. Status dokumen bisa diubah lewat kolom Status di spreadsheet. Nilai
+   "Selesai" ditampilkan sebagai badge selesai; nilai lain menjadi Submitted.
 ```
 
 ### appsscript.json
@@ -141,10 +181,14 @@ Dua berkas, tanpa framework, tanpa konfigurasi:
 - `tests/backend.test.cjs` — menjalankan `Code.gs` di Node dengan spreadsheet
   dan layanan Apps Script di-stub. Memeriksa pemetaan kolom dari judul,
   guard baris bergeser, pembuatan kolom otomatis, email + PDF, trigger
-  email otomatis, dan validasi payload.
+  email otomatis, validasi payload, dokumen DR/CK (simpan, PDF, PNG
+  kerusakan, baris Google Form tanpa ID, rename tab DR), dan memastikan
+  halaman DR/CK sudah tidak lagi berupa file HTML di Apps Script.
 - `tests/frontend.test.cjs` — menjalankan aplikasi penuh di JSDOM dengan API
   palsu. Memeriksa router, filter, drawer (termasuk bug ID kondisi
-  pengembalian yang dulu rusak), dan area cetak.
+  pengembalian yang dulu rusak), area cetak, daftar Daily Report read-only
+  dengan pencarian/detail/cetak PDF, serta Checklist Kendaraan (termasuk
+  payload yang dikirim).
 
 Backend perlu diperiksa setelah `Code.gs` diubah — file itu diserahkan ke
 pemilik Apps Script dan tidak bisa di-debug dari sini.

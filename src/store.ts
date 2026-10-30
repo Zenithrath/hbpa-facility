@@ -1,13 +1,12 @@
 /**
  * store.ts — status global aplikasi.
- *
  * Sengaja sangat kecil: satu objek biasa, tanpa Proxy, tanpa observable.
  * Halaman memanggil `refresh*()` setelah menulis, jadi tidak perlu ada
  * mekanisme langganan. Kalau nanti aplikasinya tumbuh besar dan bertingkat,
  * ganti file ini saja.
  */
 
-import type { InventarisItem, Stats, TransportItem } from './schema';
+import type { DrHeader, InventarisItem, Stats, TransportItem } from './schema';
 
 export interface AppState {
   ready: boolean;
@@ -17,7 +16,18 @@ export interface AppState {
   itemColumns: number;
   transport: TransportItem[];
   inventaris: InventarisItem[];
+  dailyReports: DrHeader[];
+  checklist: ChecklistItem[];
 }
+
+export type ChecklistItem = {
+  rowId: number;
+  noDok: string;
+  tanggal: string;
+  driver: string;
+  kendaraan: string;
+  keterangan: string;
+};
 
 export const store: AppState = {
   ready: false,
@@ -27,12 +37,6 @@ export const store: AppState = {
   itemColumns: 0,
   transport: [],
   inventaris: [],
-};
-
-export function findTransport(rowId: number): TransportItem | undefined {
-  return store.transport.find((item) => item.rowId === rowId);
-}
-
-export function findInventaris(rowId: number): InventarisItem | undefined {
-  return store.inventaris.find((item) => item.rowId === rowId);
-}
+  dailyReports: [],
+  checklist: [],
+};

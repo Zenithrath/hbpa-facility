@@ -1,0 +1,8 @@
+- Prefers consistent, uniform dimensions across sibling canvases/views in a multi-view layout (e.g. all car views the same square size) rather than mixed per-view dimensions that make the layout look messy or unclear. Confidence: 0.7
+- Prefers one row per logical document/record in spreadsheet/tabular storage (one row per checklist or job) rather than denormalizing into one row per item/damage. Views the many-rows-per-document approach as wasteful and unexpected. Confidence: 0.9
+- Prefers simple input-only data entry without relational/master-data tables (no separate Users/Driver/Vehicle master tabs) unless explicitly requested; dislikes unnecessary relations. Confidence: 0.95
+- When editing checklist item lists, apply only the requested additions/removals and do not re-add items the user previously removed (e.g. Hidrolik, Kunci Serep). Confidence: 0.8
+- Prefers showing all views/options at once instead of hiding them behind a dropdown selector (e.g. display all 5 car views simultaneously). Confidence: 0.8
+- Prefers polished visuals using provided SVG assets over crude hand-drawn canvas outlines. Confidence: 0.75
+- Prefers communication in Indonesian (Bahasa Indonesia). Confidence: 0.85
+- For multi-panel UIs, prefers a side-by-side horizontal layout (primary panel on the left, remaining panels in a 2×2 grid to its right) over vertical stacking; collapse to a single column only below the md breakpoint. Secondary content such as marks/lists that would shrink the primary canvases should be stacked below them instead of beside them. Confidence: 0.75

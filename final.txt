@@ -1,0 +1,272 @@
+
+--- pemetaan kolom dari judul ---
+  PASS  tab transport
+  PASS  tidak ada kolom transport hilang
+  PASS  grup barang terdeteksi
+  PASS  kolom yang dibuat otomatis
+  PASS  nama terdeteksi di kolom B
+
+--- getBootstrap ---
+  PASS  sukses
+  PASS  total
+  PASS  approved
+  PASS  pending
+  PASS  baris kosong dilewati
+  PASS  divisi terdeteksi
+  PASS  tidak ada peringatan
+
+--- getRequests ---
+  PASS  2 baris
+  PASS  terbaru di atas
+  PASS  noSurat dari kolom NO
+  PASS  noSurat otomatis format NNN/BULAN/FCL/YYYY
+  PASS  tanggal pengajuan dari Timestamp
+  PASS  status lama Approved -> Disetujui
+  PASS  status kosong -> Pending
+  PASS  paginasi
+  PASS  filter q
+  PASS  filter q (tarakan)
+  PASS  filter status
+  PASS  sig terisi
+
+--- updateRequest + sig ---
+  PASS  sukses
+  PASS  tanpa peringatan
+  PASS  nama tersimpan
+  PASS  nopol uppercase
+  PASS  status tersimpan
+   [log] [updateRequest] Error: Isi baris ini sudah berubah di spreadsheet. Muat ulang halaman lalu coba lagi.
+  PASS  tolak kalau baris bergeser
+  PASS  pesan guard
+  PASS  nilai lama tidak ditimpa
+  PASS  status kosong tidak error
+  PASS  status kosong tidak menghapus status
+
+--- kolom yang hilang dari spreadsheet ---
+  PASS  kolom Driver jadi kosong, bukan error
+  PASS  peringatan nama kolom
+  PASS  tidak ada error JSON
+  PASS  pulih setelah judul dikembalikan
+
+--- kolom TANGGAL opsional ---
+  PASS  tanggal tidak dianggap kolom wajib
+  PASS  kolom tanggal tetap kosong tanpa error
+  PASS  simpan tanggal tidak error
+  PASS  tanpa peringatan tanggal
+  PASS  sel tanggal lama tidak tersentuh
+
+--- nomor surat bisa diedit ---
+  PASS  nomor surat tersimpan
+  PASS  nomor kosong dibuat otomatis
+  PASS  nomor dipulihkan
+
+--- jam pemakaian ---
+  PASS  jam digabung ke HARI/TANGGAL/JAM
+  PASS  jam ngawur ditolak
+
+--- inventaris ---
+  PASS  1 baris
+  PASS  noDok
+  PASS  item punya n (bug lama)
+  PASS  barang
+  PASS  qty tiap grup
+  PASS  kondisi ambil tiap grup
+  PASS  tgl kembali dari judul "Hari & Tgl Pengembalian"
+  PASS  status default
+  PASS  sukses
+  PASS  no dokumen tersimpan
+  PASS  kondisi kembali 1
+  PASS  kondisi kembali 2
+  PASS  kolom STATUS dibuat
+  PASS  nilai STATUS
+  PASS  kolom TGL dibuat
+  PASS  nilai TGL
+  PASS  kolom CATATAN dibuat
+  PASS  baca ulang kondisi kembali
+  PASS  baca ulang no dokumen
+  PASS  baca ulang status
+
+--- guard inventaris ---
+   [log] [saveInventaris] Error: Isi baris ini sudah berubah di spreadsheet. Muat ulang halaman lalu coba lagi.
+  PASS  tolak
+
+--- create & delete ---
+  PASS  sukses
+  PASS  baris baru ada
+  PASS  status awal
+  PASS  Eka punya sig
+  PASS  hapus berhasil
+  PASS  kembali 4 baris
+
+--- email ---
+   [log] Logo gagal dimuat: Error: offline
+   [log] Logo gagal dimuat: Error: offline
+  PASS  1 email terkirim
+  PASS  2 lampiran PDF
+  PASS  subjek memuat jumlah
+  PASS  nama pengirim
+   [log] [sendEmail] Error: Maksimal 10 permintaan sekali kirim.
+  PASS  lebih dari 10 ditolak
+
+--- error handling ---
+  PASS  aksi ngawur ditolak
+  PASS  rowId ngawur ditolak
+   [log] [getBootstrap] Error: Tab "TIDAK_ADA" tidak ditemukan. Periksa CONFIG.tabs.
+  PASS  tab hilang memberi pesan jelas
+
+--- payload kegedean ---
+  PASS  payload kegedean ditolak
+
+--- statistik recent ---
+  PASS  recent berisi 5 terbaru
+
+--- trigger email otomatis ---
+   [log] Logo gagal dimuat: Error: offline
+  PASS  baris baru dikirimi email
+  PASS  baris yang dikirim adalah baris terbaru
+  PASS  penanda baris terakhir ikut maju
+  PASS  tidak kirim ulang baris yang sama
+   [log] Logo gagal dimuat: Error: offline
+   [log] Logo gagal dimuat: Error: offline
+  PASS  kirim semua baris yang tertinggal
+  PASS  tidak melewati batas
+  PASS  tanpa setup: tidak kirim massal
+  PASS  langsung mencatat baris terakhir
+  PASS  setupTriggers mengembalikan pesan
+  PASS  2 trigger dibuat
+  PASS  trigger form dibuat
+  PASS  trigger 5 menit dibuat
+   [log] Logo gagal dimuat: Error: offline
+  PASS  testEmail jalan
+
+--- setup tab baru DR/CK ---
+  PASS  tab DR/CK dibuat (terkonsolidasi)
+  PASS  M_Item terisi dari kertas asli
+  PASS  setup idempoten
+
+--- Daily Report: validasi ---
+  PASS  tanggal ngawur
+  PASS  tanpa baris terisi
+  PASS  start ngawur
+  PASS  finish sebelum start
+  PASS  plat tidak di master
+  PASS  km bukan angka
+   [log] Logo gagal dimuat: Error: offline
+   [log] [saveDr] TypeError: Cannot read properties of undefined (reading 'repeat')
+  FAIL  driver ngawur ditolak
+          got  true
+          want false
+
+--- Daily Report: simpan ---
+   [log] Logo gagal dimuat: Error: offline
+   [log] [saveDr] TypeError: Cannot read properties of undefined (reading 'repeat')
+  PASS  sukses
+  FAIL  ID format DR-YYYYMMDD-NNN
+          got  "DR-20261018-002"
+          want "DR-20261018-001"
+  PASS  hari otomatis
+  PASS  link PDF dari Drive
+  FAIL  email terkirim saat simpan
+          got  0
+          want 1
+  FAIL  subjek email DR
+          got  false
+          want true
+  PASS  lampiran PDF
+  FAIL  baris DR tersimpan
+          got  3
+          want 2
+  FAIL  jam start dinormalkan
+          got  "07:00"
+          want "07:30"
+  FAIL  total dihitung server
+          got  "01:00"
+          want "04:30"
+   [log] Logo gagal dimuat: Error: offline
+   [log] [saveDr] TypeError: Cannot read properties of undefined (reading 'repeat')
+  FAIL  ID kedua berlanjut
+          got  "DR-20261018-003"
+          want "DR-20261018-002"
+  FAIL  mobil kedua tersimpan
+          got  "KT 8107 YV"
+          want "KT 9999 ZZ"
+  FAIL  getDrData terbaru dulu
+          got  ["DR-20261018-003","DR-20261018-002","DR-20261018-001"]
+          want ["DR-20261018-002","DR-20261018-001"]
+  PASS  rows ikut
+  PASS  uraian ikut
+
+--- Daily Report: status & PDF ---
+   DBG upd: {"success":true,"data":{"message":"Dokumen DR-20261018-001 -> Selesai."}}
+  PASS  tandai Selesai
+  PASS  status tersimpan
+   [log] Logo gagal dimuat: Error: offline
+  PASS  drPdfHtml_ ada judul
+   [log] Logo gagal dimuat: Error: offline
+  PASS  drPdfHtml_ ada 10 baris
+   [log] Logo gagal dimuat: Error: offline
+   [log] Logo gagal dimuat: Error: offline
+  PASS  lebih 10 baris lanjut halaman
+
+--- masters ---
+  PASS  role admin (Users masih kosong)
+  FAIL  driver terfilter aktif
+          got  []
+          want ["Andi","Budi"]
+  PASS  kendaraan terbaca
+  FAIL  M_Item ke menu form
+          got  48
+          want 53
+  PASS  IJN dari tab Permintaan
+
+--- Checklist Kendaraan ---
+  PASS  bbm ngawur ditolak
+   [log] [saveCk] TypeError: Cannot read properties of undefined (reading 'repeat')
+  FAIL  kendaraan tak terdaftar ditolak
+          got  true
+          want false
+   [log] [saveCk] TypeError: Cannot read properties of undefined (reading 'repeat')
+  FAIL  items kosong ditolak
+          got  true
+          want false
+  PASS  status item ngawur
+  PASS  damage view ngawur
+  PASS  damage x ngawur
+   [log] [saveCk] TypeError: Cannot read properties of undefined (reading 'repeat')
+  PASS  sukses
+  FAIL  ID format CK-YYYYMMDD-NNN
+          got  "CK-20261018-003"
+          want "CK-20261018-001"
+  PASS  plat dinormalkan
+  PASS  tipe dari master
+  FAIL  subjek ADA KERUSAKAN
+          got  false
+          want true
+  FAIL  items tersimpan di CK (1 baris)
+          got  3
+          want 1
+  FAIL  catatan rusak ikut
+          got  undefined
+          want "bocor"
+  FAIL  status rusak ikut
+          got  undefined
+          want "Rusak"
+  FAIL  damage tersimpan di CK
+          got  0
+          want 1
+c:\laragon\www\hbpa-facility\tests\backend.test.cjs:487
+eq('damage view', dmgJson[0].view, 'KIRI');
+                             ^
+
+TypeError: Cannot read properties of undefined (reading 'view')
+    at Object.<anonymous> (c:\laragon\www\hbpa-facility\tests\backend.test.cjs:487:30)
+    at Module._compile (node:internal/modules/cjs/loader:1761:14)
+    at Object..js (node:internal/modules/cjs/loader:1893:10)
+    at Module.load (node:internal/modules/cjs/loader:1481:32)
+    at Module._load (node:internal/modules/cjs/loader:1300:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47
+
+Node.js v24.11.1

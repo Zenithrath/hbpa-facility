@@ -1,0 +1,76 @@
+/* ---------- Cetak ---------- */
+
+export function printRow(): void {
+  const kendaraan = $<HTMLInputElement>("ck-kendaraan")?.value ?? "";
+  const driver = $<HTMLInputElement>("ck-driver")?.value ?? "";
+  const tanggal = $<HTMLInputElement>("ck-tanggal")?.value ?? "";
+  const kilometer = $<HTMLInputElement>("ck-kilometer")?.value ?? "";
+  const bbmMasuk = $<HTMLSelectElement>("ck-bbmMasuk")?.value ?? "";
+  const bbmKeluar = $<HTMLSelectElement>("ck-bbmKeluar")?.value ?? "";
+  const keterangan = $<HTMLInputElement>("ck-keterangan")?.value ?? "";
+  const diperiksaOleh = $<HTMLInputElement>("ck-diperiksaOleh")?.value ?? "";
+  const counter = $<HTMLInputElement>("ck-counter")?.value ?? "";
+
+  print.show('checklist');
+  print.set('pc-counter', counter);
+  print.set('pc-tipe', "");
+  print.set('pc-driver', driver);
+  print.set('pc-tanggal', tanggal);
+  print.set('pc-nopol', kendaraan);
+  print.set('pc-km', kilometer);
+  print.set('pc-bbmMasuk', bbmMasuk);
+  print.set('pc-bbmKeluar', bbmKeluar);
+  print.set('pc-keterangan', keterangan);
+  print.set('pc-diperiksa', diperiksaOleh);
+
+  const itemsBox = document.getElementById('pc-items');
+  if (itemsBox) {
+    const groups: Record<string, any[]> = {};
+    const order: string[] = [];
+    for (const row of itemRows()) {
+      const grup = row.dataset.grup ?? "";
+      const item = row.dataset.item ?? "";
+      const status = row.querySelector<HTMLInputElement>('input[data-status]:checked')?.dataset.status ?? "Baik";
+      const catatan = row.querySelector<HTMLInputElement>('[data-catatan]')?.value ?? "";
+      if (!groups[grup]) { groups[grup] = []; order.push(grup); }
+      groups[grup].push({ item, status, catatan });
+    }
+    let html = "";
+    for (const g of order) {
+      html += `<div style="margin:4px 0;font-weight:bold">${esc(g)} :</div>`;
+      for (const it of groups[g]) {
+        let line = `  ${esc(it.item)} : ${esc(it.status)}`;
+        if (it.status === 'Rusak' && it.catatan) line += ` (Rusak: ${esc(it.catatan)})`;
+        html += `<div>${line}</div>`;
+      }
+    }
+    itemsBox.innerHTML = html;
+  }
+
+  const dmgBox = document.getElementById('pc-damages');
+  if (dmgBox) {
+    const views = ['ATAS','KIRI','KANAN','DEPAN','BELAKANG'];
+    let html = "";
+    for (const v of views) {
+      const marks = marks.filter((m) => m.view === v);
+      html += `<div style="margin:4px 0"><b>${v}</b>: `;
+      if (marks.length) {
+        marks.forEach((m) => {
+          html += `<span style="color:red;font-weight:bold">✗</span> (${m.x},${m.y}) ${esc(m.catatan)} `;
+        });
+      } else {
+        html += '-';
+      }
+      html += '</div>';
+      html += `<div style="position:relative;display:inline-block;margin:4px 0"><img src="./ck-${v.toLowerCase()}.webp" style="max-width:200px;height:auto" alt="${v}">`;
+      marks.forEach((m) => {
+        html += `<span style="position:absolute;left:${m.x}%;top:${m.y}%;color:red;font-weight:bold;font-size:14px;transform:translate(-50%,-50%)">✗</span>`;
+      });
+      html += '</div><br>';
+    }
+    dmgBox.innerHTML = html;
+  }
+
+  print.run();
+}
+

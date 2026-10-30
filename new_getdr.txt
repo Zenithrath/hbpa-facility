@@ -1,0 +1,129 @@
+function getDrData_() {
+  var read = readAll_('dr');
+  var sh = sheet_('dr');
+  var lastCol = sh.getLastColumn();
+  var head = lastCol > 0 ? sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0] : [];
+  var normHead = head.map(function(h){ return normalize_(h); });
+  
+  function getByHeader(data, patterns) {
+    for (var i = 0; i < normHead.length; i++) {
+      for (var j = 0; j < patterns.length; j++) {
+        if (normHead[i] === patterns[j] || normHead[i].indexOf(patterns[j]) >= 0) {
+          return String(data[i] == null ? '' : data[i]);
+        }
+      }
+    }
+    return '';
+  }
+  
+  function groupVal(group, key) {
+    var c = group[key];
+    return c ? String((function(){})() || '') : '';
+  }
+  
+  var groups = {};
+  var order = [];
+
+  read.rows.forEach(function (r) {
+    var data = r.data;
+    var id = (val_(data, read.colsMap, 'id') || val_(data, read.colsMap, 'nodokumen') || getByHeader(data, ['iddr','nodokumen','iddr'])).trim();
+    
+    var hdr = {
+      rowId: r.rowId,
+      id: id,
+      hari: val_(data, read.colsMap, 'hari') || getByHeader(data, ['hari']),
+      tanggal: val_(data, read.colsMap, 'tanggal') || getByHeader(data, ['tanggal']),
+      driver: val_(data, read.colsMap, 'driver') || getByHeader(data, ['driver','namadriver']),
+      mengetahui: val_(data, read.colsMap, 'mengetahui') || getByHeader(data, ['mengetahui']),
+      status: val_(data, read.colsMap, 'status') || getByHeader(data, ['status']) || 'Submitted',
+      createdBy: val_(data, read.colsMap, 'driver') || getByHeader(data, ['driver']),
+      createdAt: val_(data, read.colsMap, 'timestamp') || getByHeader(data, ['timestamp','waktu']) || '',
+      linkPdf: val_(data, read.colsMap, 'linkpdf') || getByHeader(data, ['linkpdf']),
+      rows: []
+    };
+    
+    // Bangun baris pekerjaan dari setiap blok (group) yang terdeteksi.
+    var groupKeys = Object.keys(read.colsMap.groups || {}).sort(function(a,b){ return Number(a)-Number(b); });
+    if (groupKeys.length) {
+      groupKeys.forEach(function (gn) {
+        var group = read.colsMap.groups[gn];
+        function g(key) {
+          var c = group[key];
+          return c ? String(data[c - 1] == null ? '' : data[c - 1]).trim() : '';
+        }
+        var row = {
+          start: g('start'),
+          finish: g('finish'),
+          total: '',
+          nopol: g('nopol'),
+          ijn: g('ijn'),
+          namaUser: g('namaUser'),
+          km: g('km'),
+          solar: g('solar'),
+          uraian: g('uraian')
+        };
+        // fallback ke getByHeader jika group kosong (form tanpa repeat)
+        if (!row.start) row.start = getByHeader(data, ['jamstart','jamkeluar','jam','start','keluar']);
+        if (!row.finish) row.finish = getByHeader(data, ['jamfinish','jamkembali','finish','kembali']);
+        if (!row.nopol) row.nopol = getByHeader(data, ['noplat','nopol','plat']);
+        if (!row.ijn) row.ijn = getByHeader(data, ['ijn']);
+        if (!row.namaUser) row.namaUser = getByHeader(data, ['namauser','user']);
+        if (!row.km) row.km = getByHeader(data, ['km']);
+        if (!row.solar) row.solar = getByHeader(data, ['solar','bbm']);
+        if (!row.uraian) row.uraian = getByHeader(data, ['uraian','pekerjaan','keperluan','kegiatan']);
+        row.total = drTotal_(row.start, row.finish);
+        var adaBaris = !!(row.start || row.finish || row.nopol || row.ijn || row.namaUser || row.uraian || row.km || row.solar);
+        if (adaBaris) hdr.rows.push(row);
+      });
+    } else {
+      // Fallback: satu blok dari fields.
+      var row = {
+        start: val_(data, read.colsMap, 'jamstart') || getByHeader(data, ['jamstart','jamkeluar','jam','start','keluar']),
+        finish: val_(data, read.colsMap, 'jamfinish') || getByHeader(data, ['jamfinish','jamkembali','finish','kembali']),
+        total: '',
+        nopol: val_(data, read.colsMap, 'nopol') || getByHeader(data, ['noplat','nopol','plat']),
+        ijn: val_(data, read.colsMap, 'ijn') || getByHeader(data, ['ijn']),
+        namaUser: val_(data, read.colsMap, 'namauser') || getByHeader(data, ['namauser','user','nama']),
+        km: val_(data, read.colsMap, 'km') || getByHeader(data, ['km']),
+        solar: val_(data, read.colsMap, 'solar') || getByHeader(data, ['solar','bbm']),
+        uraian: val_(data, read.colsMap, 'uraian') || getByHeader(data, ['uraian','pekerjaan','keperluan','kegiatan'])
+      };
+      row.total = drTotal_(row.start, row.finish);
+      var adaBaris = !!(row.start || row.finish || row.nopol || row.ijn || row.namaUser || row.uraian || row.km || row.solar);
+      if (adaBaris) hdr.rows.push(row);
+    }
+
+    // Baris kosong tidak perlu ditampilkan.
+    if (!id && !hdr.rows.length) return;
+
+    // Baris Google Form tanpa ID_DR jadi satu dokumen per baris.
+    var key = id || ('row-' + r.rowId);
+    if (!groups[key]) {
+      groups[key] = { header: hdr, rows: [] };
+      order.push(key);
+    }
+    // Gabungkan rows (untuk dokumen yang sama dari beberapa sheet row).
+    hdr.rows.forEach(function (rw) { groups[key].header.rows.push(rw); });
+  });
+
+  var out = [];
+  for (var i = order.length - 1; i >= 0; i--) {
+    var g = groups[order[i]];
+    out.push(g.header);
+  }
+  return ok_(out);
+}
+
+function drTotal_(start, finish) {
+  var sm = /^(\\d{1,2}):(\\d{2})/.exec(String(start || '').trim());
+  var fm = /^(\\d{1,2}):(\\d{2})/.exec(String(finish || '').trim());
+  if (!sm || !fm) return '';
+  var s = (+sm[1]) * 60 + (+sm[2]);
+  var f = (+fm[1]) * 60 + (+fm[2]);
+  if (f < s) f += 24 * 60;
+  var diff = f - s;
+  if (diff < 0) return '';
+  var h = Math.floor(diff / 60);
+  var m = diff % 60;
+  return ('0' + h).slice(-2) + ':' + ('0' + m).slice(-2);
+}

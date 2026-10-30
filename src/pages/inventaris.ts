@@ -41,7 +41,7 @@ const BADGE: Record<'Dipinjam' | 'Overdue' | 'Selesai', string> = {
   Selesai: 'badge-approved',
 };
 
-function badge(item: InventarisItem): string {
+export function badge(item: InventarisItem): string {
   const status = statusOf(item);
   return `<span class="badge ${BADGE[status]}">${esc(status)}</span>`;
 }

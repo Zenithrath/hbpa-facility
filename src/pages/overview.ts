@@ -5,6 +5,7 @@
 import { api } from '../api';
 import { store } from '../store';
 import { esc, icon, loadingRow, statusBadge, toast } from '../ui';
+import { badge as invBadge } from './inventaris';
 import { message, report } from './transport';
 
 const selected = new Set<number>();
@@ -84,6 +85,56 @@ export function renderStats(): void {
         <p class="mt-0.5 text-xs font-medium text-surface-400">${esc(c.sub)}</p>
       </div>
     </div>`,
+    )
+    .join('');
+}
+
+function boxLoading(text: string): string {
+  return `<div class="px-6 py-6 text-center text-sm text-surface-400">${esc(text)}</div>`;
+}
+
+export function renderTransportSummary(): void {
+  const box = document.getElementById('sum-transport');
+  if (!box) return;
+  const latest = store.transport.slice(0, 5);
+  if (!latest.length) {
+    box.innerHTML = boxLoading('Belum ada permintaan.');
+    return;
+  }
+  box.innerHTML = latest
+    .map(
+      (item) => `<div data-sum-row class="cursor-pointer px-6 py-3 hover:bg-surface-50" data-page="transport">
+    <div class="flex items-start justify-between gap-2">
+      <div class="text-xs font-bold text-primary-700 break-words">${esc(item.noSurat)}</div>
+      ${statusBadge(item.status)}
+    </div>
+    <div class="text-sm font-semibold break-words">${esc(item.nama)}
+      <span class="text-xs font-normal text-surface-500">· ${esc(item.dept)}</span></div>
+    <div class="text-xs text-surface-500 break-words">${esc(item.tujuan)} · ${esc(item.tglJam)}</div>
+  </div>`,
+    )
+    .join('');
+}
+
+export function renderInventarisSummary(): void {
+  const box = document.getElementById('sum-inventaris');
+  if (!box) return;
+  const latest = [...store.inventaris].sort((a, b) => b.rowId - a.rowId).slice(0, 5);
+  if (!latest.length) {
+    box.innerHTML = boxLoading('Belum ada peminjaman.');
+    return;
+  }
+  box.innerHTML = latest
+    .map(
+      (item) => `<div data-sum-row class="cursor-pointer px-6 py-3 hover:bg-surface-50" data-page="inventaris">
+    <div class="flex items-start justify-between gap-2">
+      <div class="text-xs font-bold text-primary-700 break-words">${esc(item.noDok)}</div>
+      ${invBadge(item)}
+    </div>
+    <div class="text-sm font-semibold break-words">${esc(item.nama)}
+      <span class="text-xs font-normal text-surface-500">· ${esc(item.kontak)}</span></div>
+    <div class="text-xs text-surface-500 break-words">${item.items.length} barang · Pinjam ${esc(item.tglPinjam)}</div>
+  </div>`,
     )
     .join('');
 }
@@ -177,6 +228,10 @@ export async function sendSelected(button?: HTMLButtonElement): Promise<void> {
 export async function refresh(): Promise<void> {
   const box = document.getElementById('email-list');
   if (box) box.innerHTML = loadingRow(1, 'Memuat data permintaan...');
+  const tBox = document.getElementById('sum-transport');
+  if (tBox) tBox.innerHTML = boxLoading('Memuat data permintaan...');
+  const iBox = document.getElementById('sum-inventaris');
+  if (iBox) iBox.innerHTML = boxLoading('Memuat data peminjaman...');
   try {
     const page = await api.listRequests();
     store.transport = page.items;
@@ -185,6 +240,14 @@ export async function refresh(): Promise<void> {
     console.error(error);
     const el = document.getElementById('email-list');
     if (el) el.innerHTML = `<div class="p-6 text-center text-sm text-red-600">${esc(message(error))}</div>`;
+  }
+  renderTransportSummary();
+  try {
+    store.inventaris = await api.listInventaris();
+    renderInventarisSummary();
+  } catch (error) {
+    console.error(error);
+    if (iBox) iBox.innerHTML = `<div class="px-6 py-6 text-center text-sm text-red-600">${esc(message(error))}</div>`;
   }
 }
 

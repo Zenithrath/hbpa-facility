@@ -223,6 +223,121 @@ export interface InventarisLineInput {
 }
 
 /* =====================================================
+   SURAT TUGAS / DAILY REPORT + CHECKLIST KENDARAAN
+   ===================================================== */
+
+export interface DrRow {
+  start: string;
+  finish: string;
+  total: string;
+  nopol: string;
+  ijn: string;
+  namaUser: string;
+  km: string;
+  solar: string;
+  uraian: string;
+}
+
+export interface DrHeader {
+  rowId: number;
+  id: string;
+  hari: string;
+  tanggal: string;
+  driver: string;
+  mengetahui: string;
+  status: string;
+  createdBy: string;
+  createdAt: string;
+  linkPdf: string;
+  rows: DrRow[];
+}
+
+/** Field baris yang boleh diisi browser. Kolom hitungan diserahkan server. */
+export interface DrRowInput {
+  start: string;
+  finish: string;
+  nopol?: string;
+  ijn?: string;
+  namaUser?: string;
+  km?: string;
+  solar?: string;
+  uraian?: string;
+}
+
+export interface DrSaveResult {
+  item: DrHeader;
+  message?: string;
+}
+
+/** Hasil aksi drPdf: tautan Drive, atau data URL kalau Drive gagal. */
+export interface DrPdfResult {
+  rowId: number;
+  id: string;
+  filename: string;
+  linkPdf: string;
+  dataUrl: string;
+}
+
+export interface CkItem {
+  grup: string;
+  item: string;
+  status: string;
+  catatan: string;
+}
+
+export interface CkDamage {
+  view: string;
+  x: number;
+  y: number;
+  catatan: string;
+  linkGambar?: string;
+}
+
+export interface CkHeader {
+  rowId: number;
+  id: string;
+  counter: string;
+  tipeMobil: string;
+  driver: string;
+  tanggal: string;
+  noPolisi: string;
+  kilometer: string;
+  bbmMasuk: string;
+  bbmKeluar: string;
+  keterangan: string;
+  diperiksaOleh: string;
+  status: string;
+  createdBy: string;
+  createdAt: string;
+  linkPdf: string;
+  items: CkItem[];
+  damages: CkDamage[];
+  hasRusak: boolean;
+}
+
+export interface CkSaveResult {
+  item: CkHeader;
+  hasRusak?: boolean;
+  message?: string;
+}
+
+/** Master untuk halaman DR/CK, dikembalikan oleh aksi getMasters. */
+export interface DrCkMaster {
+  role: string;
+  email: string;
+  driver: string;
+  drivers: { nama: string; email: string }[];
+  kendaraan: { noPlat: string; tipe: string }[];
+  items: { grup: string; item: string; urutan: string }[];
+  ijn: { ijn: string; tujuan: string }[];
+  bbmLevels: string[];
+  ckStatuses: string[];
+  views: string[];
+  ckFormCode: string;
+  ckRev: string;
+}
+
+/* =====================================================
    BENTUK BALASAN API
    ===================================================== */
 

@@ -13,8 +13,11 @@ import { $, drawer, esc, field$, icon, must, toast } from './ui';
 import * as overview from './pages/overview';
 import * as transport from './pages/transport';
 import * as inventaris from './pages/inventaris';
+import * as dailyReport from './pages/daily-report';
+import * as checklist from './pages/checklist';
+import { checklistListPage, openDetail as clOpenDetail, printChecklist as clPrintChecklist } from './pages/checklist-list';
 
-/* =====================================================
+/*****************************************************************
    TEMPLATE
    ===================================================== */
 
@@ -66,6 +69,7 @@ const SHELL = `
   </div>
 </div>
 
+<div id="loading" class="no-print hidden fixed inset-0 z-50 flex items-center justify-center bg-black/30"><div class="h-10 w-10 animate-spin rounded-full border-4 border-white/30 border-t-white"></div></div>
 <div id="toast" class="hidden"></div>
 `;
 
@@ -93,6 +97,29 @@ const OVERVIEW: Page = {
       </div>
 
       <div id="stats" class="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6"></div>
+
+      <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <div class="card overflow-hidden">
+          <div class="flex items-center justify-between gap-2 border-b border-surface-100 px-6 py-4">
+            <div class="flex items-center gap-2">
+              ${icon('file', 'w-4 h-4 text-primary-600')}
+              <h4 class="text-sm font-bold">Ringkasan Transportasi</h4>
+            </div>
+            <button class="text-xs font-semibold text-primary-700 hover:underline" data-page="transport">Lihat semua</button>
+          </div>
+          <div id="sum-transport" class="divide-y divide-surface-100"></div>
+        </div>
+        <div class="card overflow-hidden">
+          <div class="flex items-center justify-between gap-2 border-b border-surface-100 px-6 py-4">
+            <div class="flex items-center gap-2">
+              ${icon('box', 'w-4 h-4 text-primary-600')}
+              <h4 class="text-sm font-bold">Ringkasan Inventaris</h4>
+            </div>
+            <button class="text-xs font-semibold text-primary-700 hover:underline" data-page="inventaris">Lihat semua</button>
+          </div>
+          <div id="sum-inventaris" class="divide-y divide-surface-100"></div>
+        </div>
+      </div>
 
       <div class="card overflow-hidden">
         <div class="flex items-center gap-2 border-b border-surface-100 px-6 py-4">
@@ -229,8 +256,7 @@ const INVENTARIS_PAGE: Page = {
                 <th class="px-4 py-3.5 min-w-56">Barang</th>
                 <th class="px-4 py-3.5 whitespace-nowrap">Tgl Pinjam</th>
                 <th class="px-4 py-3.5 whitespace-nowrap">Rencana Kembali</th>
-                <th class="px-4 py-3.5 min-w-40">Keperluan</th>
-                <th class="px-4 py-3.5 whitespace-nowrap">Status</th>
+                <th class="px-4 py-3.5 min-w-40">Keperluan</th>
                 <th class="px-4 py-3.5 whitespace-nowrap">Tgl Kembali Aktual</th>
                 <th class="px-4 py-3.5 text-right whitespace-nowrap">Aksi</th>
               </tr>
@@ -247,10 +273,183 @@ const INVENTARIS_PAGE: Page = {
   onFilterChange: () => inventaris.renderList(),
 };
 
+const DAILY_REPORT_PAGE: Page = {
+  title: 'Surat Tugas / Daily Report',
+  icon: 'file',
+  html: () => `
+    <div class="space-y-4">
+      <div class="card flex flex-col gap-3 p-4 sm:flex-row">
+        <div class="relative flex-1">
+          ${icon('search', 'w-4 h-4 text-surface-400 absolute top-1/2 left-3.5 -translate-y-1/2')}
+          <input id="dr-q" type="search" class="field pl-10" placeholder="Cari driver, tanggal, no. plat, atau uraian...">
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <p id="dr-count" class="text-[11px] text-surface-400"></p>
+        <p class="text-[11px] text-surface-400">Input lewat Google Form · PDF dicetak dari dashboard.</p>
+      </div>
+
+      <div id="dr-cards" class="space-y-3 md:hidden"></div>
+
+      <div class="card hidden overflow-hidden md:block">
+        <div class="overflow-x-auto">
+          <table class="w-full border-collapse text-left text-sm">
+            <thead class="bg-surface-50 text-[11px] font-bold tracking-wider text-surface-500 uppercase">
+              <tr>
+                <th class="px-4 py-3.5 whitespace-nowrap">No. Dokumen</th>
+                <th class="px-4 py-3.5 whitespace-nowrap">Hari / Tanggal</th>
+                <th class="px-4 py-3.5 whitespace-nowrap">Driver</th>
+                <th class="px-4 py-3.5 whitespace-nowrap">No. Plat</th>
+                <th class="px-4 py-3.5 min-w-48">Uraian</th>
+                <th class="px-4 py-3.5 text-right whitespace-nowrap">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="dr-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>`,
+  mount() {
+    void dailyReport.refresh();
+  },
+  onSearchInput: () => dailyReport.renderList(),
+  onFilterChange: () => dailyReport.renderList(),
+};
+
+function solarGauge(id: string, label: string, hint: string): string {
+  return `<div class="rounded-xl border border-surface-200 bg-surface-50 p-3" data-gauge="${id}">
+    <div class="flex items-center justify-between gap-2">
+      <div>
+        <div class="text-xs font-bold tracking-wide text-surface-600 uppercase">${esc(label)}</div>
+        <div class="text-[11px] text-surface-400">${esc(hint)}</div>
+      </div>
+      <span class="inline-flex min-w-12 items-center justify-center rounded-full border border-surface-200 bg-white px-2.5 py-1 text-xs font-bold text-surface-400"
+        data-gauge-badge>—</span>
+    </div>
+    <div class="mt-1 cursor-pointer rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+      role="slider" tabindex="0" aria-label="Level solar ${esc(label.toLowerCase())}"
+      aria-valuemin="0" aria-valuemax="4" aria-valuenow="0" aria-valuetext="Belum dipilih"
+      data-gauge-dial="${id}"></div>
+    <select id="${id}" class="hidden" tabindex="-1" aria-hidden="true"></select>
+  </div>`;
+}
+
+function damageView(view: string, extra = ""): string {
+  const size = checklist.VIEW_DIMENSIONS[view] ?? { w: 480, h: 320 };
+  return `<div class="text-center ${extra}">
+    <div class="rounded-xl border border-surface-200 p-2">
+      <canvas id="ck-cv-${view}" width="${size.w}" height="${size.h}" data-view="${view}"
+        class="block h-auto w-full cursor-crosshair rounded-lg"></canvas>
+    </div>
+    <div class="mt-1 text-xs font-semibold tracking-wide text-surface-600">${view}</div>
+  </div>`;
+}
+
+const CHECKLIST_PAGE: Page = {
+  title: 'Checklist Kendaraan',
+  icon: 'check',
+  html: () => `
+    <div class="space-y-4">
+      <div class="card p-4 sm:p-6">
+        <div id="ck-msg" class="text-sm font-semibold text-surface-700"></div>
+
+        <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label class="field-label" for="ck-tanggal">Tanggal</label>
+            <input id="ck-tanggal" type="date" class="field">
+          </div>
+          <div>
+            <label class="field-label" for="ck-counter">Counter</label>
+            <input id="ck-counter" type="text" class="field" placeholder="C-01">
+          </div>
+          <div class="sm:col-span-2">
+            <label class="field-label" for="ck-kendaraan">Kendaraan</label>
+            <input id="ck-kendaraan" type="text" class="field" placeholder="No. plat kendaraan">
+          </div>
+          <div>
+            <label class="field-label" for="ck-driver">Driver</label>
+            <input id="ck-driver" type="text" class="field" placeholder="Nama driver">
+          </div>
+          <div>
+            <label class="field-label" for="ck-kilometer">Kilometer</label>
+            <input id="ck-kilometer" type="text" inputmode="numeric" class="field" placeholder="cth 62000">
+          </div>
+          <div class="sm:col-span-2 lg:col-span-4">
+            <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <span class="text-xs font-bold tracking-wide text-surface-600 uppercase">Level Solar</span>
+              <span class="text-[11px] text-surface-400">Klik gauge atau tekan panah kiri/kanan untuk memilih level.</span>
+            </div>
+            <div class="mt-2 grid gap-3 sm:grid-cols-2">
+              ${solarGauge('ck-bbmMasuk', 'Masuk', 'Level saat kendaraan keluar')}
+              ${solarGauge('ck-bbmKeluar', 'Kembali', 'Level saat kendaraan kembali')}
+            </div>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="field-label" for="ck-keterangan">Keterangan</label>
+            <input id="ck-keterangan" type="text" class="field" placeholder="Tolong periksa...">
+          </div>
+          <div class="sm:col-span-2">
+            <label class="field-label" for="ck-diperiksaOleh">Diperiksa oleh (mechanic)</label>
+            <input id="ck-diperiksaOleh" type="text" class="field">
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-4 sm:p-6">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <button class="btn-slate" type="button" data-action="ck-semuaBaik">Tandai Semua Baik</button>
+          <span class="text-xs text-surface-500">Baik / Rusak / Tidak Ada. Catatan muncul bila bukan Baik.</span>
+        </div>
+        <div id="ck-grup" class="mt-4"></div>
+      </div>
+
+      <div class="card p-4 sm:p-6">
+        <h4 class="text-sm font-bold">Tanda kerusakan di bodi (opsional)</h4>
+        <p class="mt-1 text-xs text-surface-500">
+          Klik lokasi di gambar kendaraan untuk menandai. Isi catatan bila perlu, lalu klik Catat.
+        </p>
+        <div class="mt-3 grid gap-3 md:grid-cols-[0.7fr_1fr_1fr]">
+          ${damageView('ATAS', 'mx-auto flex h-full w-full max-w-64 flex-col justify-center md:row-span-2 md:max-w-none')}
+          ${damageView('KIRI')}
+          ${damageView('KANAN')}
+          ${damageView('DEPAN')}
+          ${damageView('BELAKANG')}
+        </div>
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <input id="ck-sisiCatatan" type="text" class="field w-auto flex-1 py-1.5 text-xs" placeholder="Catatan kerusakan (opsional)">
+          <button class="btn-slate" type="button" data-action="ck-catat">Catat penanda</button>
+          <span id="ck-pendingHint" class="text-[11px] text-surface-400">Klik gambar untuk memilih lokasi.</span>
+        </div>
+        <div class="mt-3 text-sm">
+          <div>Penanda tercatat: <b id="ck-markCount">0</b></div>
+          <ul id="ck-marks" class="mt-2 space-y-2"></ul>
+        </div>
+      </div>
+
+      <div class="card p-4 sm:p-6">
+        <div class="flex flex-wrap items-center gap-3">
+          <button class="btn-slate" type="button" data-action="ck-print">Cetak</button>
+      <button id="ck-simpan" class="btn-primary" type="button" data-action="ck-save">
+            ${icon('check')} Simpan
+          </button>
+          <span id="ck-loading" class="hidden text-sm text-surface-500">Sedang menyimpan...</span>
+        </div>
+        <div id="ck-hasil" class="mt-4"></div>
+      </div>
+    </div>`,
+  mount() {
+    void checklist.refresh();
+  },
+};
+
 const PAGES = {
   overview: OVERVIEW,
   transport: TRANSPORT_PAGE,
   inventaris: INVENTARIS_PAGE,
+  daily: DAILY_REPORT_PAGE,
+  checklist: CHECKLIST_PAGE,
+  'checklist-list': checklistListPage,
 } as const;
 
 type PageKey = keyof typeof PAGES;
@@ -301,7 +500,7 @@ const PRINT_AREAS = `
       </tr>
     </table>
     <table class="w-full italic" style="margin-top:15px;font-size:7.5pt">
-      <tr><td>FM-FCL-02.01</td><td class="text-right">Rev : 02 (080617)</td></tr>
+      <tr><td>FM-FCL-02.04</td><td class="text-right">Rev : 01 (171212)</td></tr>
     </table>
   </div>
 </div>
@@ -355,6 +554,222 @@ const PRINT_AREAS = `
       </tr>
     </table>
   </div>
+</div>
+
+<div id="print-daily" class="hidden">
+  <div class="mx-auto w-full p-1 font-sans text-black" style="width:200mm;font-size:7pt">
+    <table class="w-full" style="border-collapse:collapse;border:1.5px solid #000">
+      <tr>
+        <td width="22%" align="center" valign="middle" style="border-right:1.5px solid #000;padding:3px">
+          <img src="https://hidup-baru.com/wp-content/uploads/2023/04/cropped-HBPA.png" style="max-height:34px;max-width:80px;">
+        </td>
+        <td width="78%" align="center" valign="middle" style="padding:3px">
+          <div style="font-weight:bold;font-size:10pt;letter-spacing:0.5px">PT. HIDUP BARU PERDANA ABADI</div>
+          <div style="font-weight:bold;font-size:9pt;letter-spacing:0.5px;margin-top:1px">SURAT TUGAS / DAILY REPORT</div>
+        </td>
+      </tr>
+    </table>
+    <table class="w-full" style="border-collapse:collapse;margin-top:3px;margin-bottom:1px;font-weight:bold;font-size:8pt">
+      <tr>
+        <td width="50%" align="left" valign="top">
+          Hari &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: <span id="pd-hari"></span><br>
+          Tanggal : <span id="pd-tanggal"></span>
+        </td>
+        <td width="50%" align="right" valign="top">
+          Driver : <span id="pd-driver"></span>
+        </td>
+      </tr>
+    </table>
+    <table class="w-full" style="border-collapse:collapse;border:1.5px solid #000;text-align:center;font-size:7pt">
+      <thead>
+        <tr>
+          <th colspan="3" style="border:1px solid #000;padding:1px">Jam</th>
+          <th rowspan="2" width="7%" style="border:1px solid #000;padding:1px">No.<br>Plat</th>
+          <th rowspan="2" width="6%" style="border:1px solid #000;padding:1px">IJIN</th>
+          <th rowspan="2" width="10%" style="border:1px solid #000;padding:1px">Nama<br>User</th>
+          <th rowspan="2" width="5%" style="border:1px solid #000;padding:1px">KM</th>
+          <th rowspan="2" width="5%" style="border:1px solid #000;padding:1px">Solar</th>
+          <th rowspan="2" width="28%" style="border:1px solid #000;padding:1px">Uraian</th>
+          <th rowspan="2" width="9%" style="border:1px solid #000;padding:1px">Paraf<br>Security</th>
+          <th colspan="2" style="border:1px solid #000;padding:1px">Paraf</th>
+        </tr>
+        <tr>
+          <th width="5%" style="border:1px solid #000;padding:1px">Start</th>
+          <th width="5%" style="border:1px solid #000;padding:1px">Finish</th>
+          <th width="5%" style="border:1px solid #000;padding:1px">Total</th>
+          <th width="9%" style="border:1px solid #000;padding:1px">Nama</th>
+          <th width="9%" style="border:1px solid #000;padding:1px">TTD</th>
+        </tr>
+      </thead>
+      <tbody id="pd-rows"></tbody>
+    </table>
+    <table class="w-full" style="border-collapse:collapse;margin-top:2px">
+      <tr>
+        <td width="50%" align="left" valign="bottom" style="font-size:6.5pt;font-style:italic;font-weight:bold">
+          FM-FCL-02.04
+        </td>
+        <td width="50%" align="right" valign="bottom" style="font-size:6.5pt;font-style:italic;font-weight:bold">
+          REV: 01 (171212)
+        </td>
+      </tr>
+    </table>
+    <table class="w-full" style="border-collapse:collapse;margin-top:2px">
+      <tr>
+        <td width="50%" align="left" valign="top">
+          <table cellspacing="0" cellpadding="0" style="border-collapse:collapse;text-align:center;font-size:7pt">
+            <tr>
+              <td style="border:1.5px solid #000;padding:0">
+                <table width="110" cellspacing="0" cellpadding="0" style="border-collapse:collapse">
+                  <tr><th style="border-bottom:1px solid #000;padding:1px">Mengetahui</th></tr>
+                  <tr><td style="height:26px"></td></tr>
+                </table>
+              </td>
+              <td style="border:1.5px solid #000;border-left:none;padding:0">
+                <table width="110" cellspacing="0" cellpadding="0" style="border-collapse:collapse">
+                  <tr><th style="border-bottom:1px solid #000;padding:1px">Driver / Operator</th></tr>
+                  <tr><td style="height:26px"></td></tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+        <td width="50%" align="right" valign="top">
+          <table cellspacing="0" cellpadding="0" style="border-collapse:collapse;text-align:center;font-size:7pt">
+            <tr>
+              <td style="border:1.5px solid #000;padding:0">
+                <table width="110" cellspacing="0" cellpadding="0" style="border-collapse:collapse">
+                  <tr><th style="border-bottom:1px solid #000;padding:1px">Driver / Operator</th></tr>
+                  <tr><td style="height:26px"></td></tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+    <div style="font-size:6.5pt;font-style:italic;margin-top:2px">
+      Note : Setiap sore / sehabis kerja harus melapor kepada pemberi tugas
+    </div>
+  </div>
+</div>    <div id="print-checklist" class="hidden">
+  <div class="mx-auto w-full p-1 font-sans text-black" style="width:200mm;font-size:8pt">
+    <div class="text-center font-bold" style="font-size:12pt">CHECKLIST PEMERIKSAAN & KELENGKAPAN KENDARAAN OPERASIONAL</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px">
+      <div>
+        <div style="font-size:9pt;font-weight:bold">Counter</div>
+        <div style="font-size:10pt" id="pc-counter"></div>
+        <div style="font-size:9pt;font-weight:bold">Type Mobil</div>
+        <div style="font-size:10pt" id="pc-tipe"></div>
+        <div style="font-size:9pt;font-weight:bold">Driver</div>
+        <div style="font-size:10pt" id="pc-driver"></div>
+      </div>
+      <div>
+        <div style="font-size:9pt;font-weight:bold">Tanggal</div>
+        <div style="font-size:10pt" id="pc-tanggal"></div>
+        <div style="font-size:9pt;font-weight:bold">No Polisi</div>
+        <div style="font-size:10pt" id="pc-nopol"></div>
+        <div style="font-size:9pt;font-weight:bold">Kilometer</div>
+        <div style="font-size:10pt" id="pc-km"></div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:center;gap:20px;margin:6px 0">
+      <div>
+        <div style="font-size:9pt;font-weight:bold;text-align:center">MASUK</div>
+        <div style="font-size:10pt;text-align:center;line-height:1.2" id="pc-bbmMasuk"></div>
+      </div>
+      <div>
+        <div style="font-size:9pt;font-weight:bold;text-align:center">KELUAR</div>
+        <div style="font-size:10pt;text-align:center;line-height:1.2" id="pc-bbmKeluar"></div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:6px 0">
+      <div>
+        <div style="font-size:8pt;font-weight:bold;color:surface-600;text-transform:uppercase">Kaca</div>
+        <div style="font-size:7.5pt"><label><input type="checkbox" disabled> Depan</label></div>
+        <div><label><input type="checkbox" disabled> Kiri</label></div>
+        <div><label><input type="checkbox" disabled> Kanan</label></div>
+        <div><label><input type="checkbox" disabled> Spion Kanan</label></div>
+        <div><label><input type="checkbox" disabled> Spion Kiri</label></div>
+        <div><label><input type="checkbox" disabled> Spion Dalam</label></div>
+      </div>
+      <div>
+        <div style="font-size:8pt;font-weight:bold;color:surface-600;text-transform:uppercase">Body Mobil</div>
+        <div><label><input type="checkbox" disabled> Depan</label></div>
+        <div><label><input type="checkbox" disabled> Grill</label></div>
+        <div><label><input type="checkbox" disabled> Fender</label></div>
+        <div><label><input type="checkbox" disabled> Pintu Dpn Kanan</label></div>
+        <div><label><input type="checkbox" disabled> Pintu Dpn Kiri</label></div>
+        <div><label><input type="checkbox" disabled> Pintu Blk Kanan</label></div>
+        <div><label><input type="checkbox" disabled> Pintu Blk Kiri</label></div>
+        <div><label><input type="checkbox" disabled> Pintu Belakang</label></div>
+      </div>
+      <div>
+        <div style="font-size:8pt;font-weight:bold;color:surface-600;text-transform:uppercase">Ban</div>
+        <div><label><input type="checkbox" disabled> Kanan Depan</label></div>
+        <div><label><input type="checkbox" disabled> Kiri Depan</label></div>
+        <div><label><input type="checkbox" disabled> Kanan Belakang</label></div>
+        <div><label><input type="checkbox" disabled> Kiri Belakang</label></div>
+        <div><label><input type="checkbox" disabled> Serep</label></div>
+      </div>
+      <div>
+        <div style="font-size:8pt;font-weight:bold;color:surface-600;text-transform:uppercase">Mesin</div>
+        <div><label><input type="checkbox" disabled> Oli Mesin</label></div>
+        <div><label><input type="checkbox" disabled> Minyak Rem</label></div>
+        <div><label><input type="checkbox" disabled> Air Radiator</label></div>
+        <div><label><input type="checkbox" disabled> Air ACCU</label></div>
+        <div><label><input type="checkbox" disabled> Air Wiper</label></div>
+      </div>
+      <div>
+        <div style="font-size:8pt;font-weight:bold;color:surface-600;text-transform:uppercase">Lampu</div>
+        <div><label><input type="checkbox" disabled> Besar</label></div>
+        <div><label><input type="checkbox" disabled> Kecil</label></div>
+        <div><label><input type="checkbox" disabled> Rem</label></div>
+        <div><label><input type="checkbox" disabled> Sen Depan</label></div>
+        <div><label><input type="checkbox" disabled> Sen Belakang</label></div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:6px 0">
+      <div>
+        <div style="font-size:8pt;font-weight:bold;color:surface-600;text-transform:uppercase">Ekterior</div>
+        <div><label><input type="checkbox" disabled> Talang Air</label></div>
+        <div><label><input type="checkbox" disabled> Plat Blkng</label></div>
+        <div><label><input type="checkbox" disabled> Plat Depan</label></div>
+        <div><label><input type="checkbox" disabled> Kunci Serep</label></div>
+      </div>
+      <div>
+        <div style="font-size:8pt;font-weight:bold;color:surface-600;text-transform:uppercase">Kelengkapan</div>
+        <div><label><input type="checkbox" disabled> Kunci Roda</label></div>
+        <div><label><input type="checkbox" disabled> Dongkrak</label></div>
+        <div><label><input type="checkbox" disabled> P3K</label></div>
+        <div><label><input type="checkbox" disabled> STNK</label></div>
+      </div>
+      <div>
+        <div style="font-size:8pt;font-weight:bold;color:surface-600;text-transform:uppercase">Interior</div>
+        <div><label><input type="checkbox" disabled> Jok</label></div>
+        <div><label><input type="checkbox" disabled> Stir</label></div>
+        <div><label><input type="checkbox" disabled> Karpet Dasar</label></div>
+        <div><label><input type="checkbox" disabled> Persneling</label></div>
+        <div><label><input type="checkbox" disabled> Rem Tangan</label></div>
+        <div><label><input type="checkbox" disabled> Dashbord</label></div>
+        <div><label><input type="checkbox" disabled> Sendalan</label></div>
+        <div><label><input type="checkbox" disabled> AC</label></div>
+        <div><label><input type="checkbox" disabled> Charger</label></div>
+        <div><label><input type="checkbox" disabled> Radio</label></div>
+      </div>
+      <div>
+        <div style="font-size:8pt;font-weight:bold;color:surface-600;text-transform:uppercase">ATAS</div>
+      <div>
+        <div style="font-size:8pt;font-weight:bold;color:surface-600;text-transform:uppercase">KIRI</div>
+      <div>
+        <div style="font-size:8pt;font-weight:bold;color:surface-600;text-transform:uppercase">KANAN</div>
+      <div>
+        <div style="font-size:8pt;font-weight:bold;color:surface-600;text-transform:uppercase">DEPAN</div>
+      <div>
+        <div style="font-size:8pt;font-weight:bold;color:surface-600;text-transform:uppercase">BELAKANG</div>
+    </div>
+    <div style="margin:6px 0"><b>Keterangan:</b> <span id="pc-keterangan"></span></div>
+    <div><b>Diperiksa oleh:</b> <span id="pc-diperiksa"></span></div>
+  </div>
 </div>`;
 
 /* =====================================================
@@ -388,6 +803,19 @@ const ACTIONS: Record<string, Handler> = {
   'select-all': () => overview.selectAll(true),
   'select-none': () => overview.selectAll(false),
   'send-selected': (el) => overview.sendSelected(el as HTMLButtonElement),
+
+  'dr-open': (_el, id) => dailyReport.openDrawer(id),
+  'dr-pdf': (_el, id) => dailyReport.printPdf(id),
+
+  'ck-save': () => checklist.save(),
+  'ck-print': () => checklist.printRow(),
+  'ck-reset': () => checklist.reset(),
+  'ck-semuaBaik': () => checklist.semuaBaik(),
+  'ck-catat': () => checklist.catat(),
+  'ck-delMark': (_el, id) => checklist.removeMark(id),
+
+  'cl-open': (_el, id) => clOpenDetail(id),
+  'cl-print': (_el, id) => clPrintChecklist(id),
 };
 
 /* =====================================================
@@ -443,10 +871,10 @@ function toggleSidebar(force?: boolean): void {
 }
 
 function wireInputs(page: Page): void {
-  for (const id of ['q', 'inv-q', 'mail-q']) {
+  for (const id of ['q', 'inv-q', 'mail-q', 'dr-q']) {
     $(id)?.addEventListener('input', () => page.onSearchInput?.());
   }
-  for (const id of ['filter-status', 'filter-dept', 'inv-status']) {
+  for (const id of ['filter-status', 'filter-dept', 'inv-status', 'dr-status']) {
     $(id)?.addEventListener('change', () => page.onFilterChange?.());
   }
 }
@@ -498,7 +926,14 @@ function delegate(event: Event): void {
   const el = target.closest<HTMLElement>('[data-action]');
   if (el) {
     const handler = ACTIONS[el.dataset.action ?? ''];
-    if (handler) void handler(el, Number(el.dataset.id ?? 0));
+    if (handler) {
+      const res = handler(el, Number(el.dataset.id ?? 0));
+      if (res && typeof (res as any).then === 'function') {
+        const ov = $('loading');
+        ov?.classList.remove('hidden');
+        (res as Promise<any>).finally(() => ov?.classList.add('hidden'));
+      }
+    }
   }
 }
 

@@ -39,6 +39,12 @@ export const CONFIG = {
 
   /** Panjang maksimum payload yang dikirim lewat query string /exec. */
   MAX_WRITE_BYTES: 4000,
+
+  /**
+   * Batas payload dokumen DR/CK. Lebih besar karena checklist membawa
+   * tangkapan PNG tanda kerusakan (data URL base64).
+   */
+  MAX_DOC_BYTES: 50_000,
 } as const;
 
 /** Pesan error kalau API_URL masih kosong, biar jelas penyebabnya. */

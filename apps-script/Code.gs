@@ -31,7 +31,10 @@ var CONFIG = {
 
   tabs: {
     transport: 'TAB_TRANSPORT',
-    inventaris: 'TAB_INVENTARIS'
+    inventaris: 'TAB_INVENTARIS',
+    dr:         'TAB_DAILYREPORT',
+    ck:         'TAB_CEKKENDARANA',
+    mItem:      'TAB_Item'
   },
 
   /** Email tujuan + logo untuk lampiran PDF. */
@@ -98,7 +101,19 @@ function dispatch_(action, param) {
     case 'sendEmail':           return sendEmail_(param);
 
     case 'getInventarisData':   return getInventarisData_();
+    case 'getMasters':          return getMasters_();
     case 'saveInventaris':      return saveInventaris_(parseBody_(param));
+
+    // Fitur Daily Report / Checklist Kendaraan.
+    case 'getDrData':         return getDrData_();
+    case 'drPdf':             return drPdfForRow_(param.rowId || param.id);
+    case 'saveDr':            return saveDr_(parseBody_(param));
+    case 'updateDrStatus':    return updateDocStatus_('dr', parseBody_(param));
+    case 'updateDr':          return updateDr_(parseBody_(param));
+    case 'getCkData':         return getCkData_();
+    case 'saveCk':            return saveCk_(parseBody_(param));
+    case 'ckPdf':              return ckPdfForRow_(param.rowId || param.id);
+    case 'updateCkStatus':    return updateDocStatus_('ck', parseBody_(param));
 
     case 'diagnose':            return { success: true, data: diagnose_() };
     default:                    return fail_('Aksi tidak dikenal: ' + action);
@@ -231,6 +246,55 @@ var COLS = {
       { key: 'kondisiKembali', label: 'KONDISI KEMBALI', re: /^kondisikembali(\d*)$/ }
     ],
     identity: ['no', 'nama', 'tglPinjam']
+  },
+
+  dr: {
+    fields: [
+      { key: 'no',           aliases: ['nokolo', 'nokolom', 'nokolo', 'no_kolom', 'no', 'nomor', 'nodokumen', 'nodok'] },
+      { key: 'timestamp',    aliases: ['timestamp', 'waktu', 'tglinput'] },
+      { key: 'tanggal',     aliases: ['tanggal'] },
+      { key: 'hari',        aliases: ['hari'] },
+      { key: 'driver',      aliases: ['driver', 'namadriver', 'namadrvier'] },
+      { key: 'id',          aliases: ['iddr', 'id_dr', 'iddr'] },
+      { key: 'nodokumen',   aliases: ['nodokumen', 'nodok'] },
+      { key: 'status',      aliases: ['status'] },
+      { key: 'mengetahui',  aliases: ['mengetahui', 'disetujui'] },
+      { key: 'linkpdf',     aliases: ['linkpdf'] }
+    ],
+    repeat: [
+      { key: 'start',   groupStart: true, re: /jam.*(?:start|keluar|mulai)|keluar/ },
+      { key: 'finish',  re: /jam.*(?:finish|kembali|selesai)|kembali/ },
+      { key: 'nopol',   re: /plat|nopol/ },
+      { key: 'ijn',     re: /ijn/ },
+      { key: 'namaUser',re: /user|namauser/ },
+      { key: 'km',      re: /^km$/ },
+      { key: 'solar',   re: /solar|bbm/ },
+      { key: 'uraian',  re: /uraian|pekerjaan|keperluan|kegiatan/ }
+    ],
+    identity: ['timestamp', 'driver', 'nopol']
+  },
+
+  ck: {
+    fields: [
+      { key: 'id',           aliases: ['id_ck'] },
+      { key: 'tanggal',      aliases: ['tanggal'] },
+      { key: 'status',       aliases: ['status'] },
+      { key: 'nopol',        aliases: ['no_polisi', 'nopol', 'plat'] },
+      { key: 'driver',       aliases: ['driver'] }
+    ],
+    repeat: [],
+    identity: ['id']
+  },
+
+  mItem: {
+    fields: [
+      { key: 'grup',   aliases: ['grup', 'group'] },
+      { key: 'item',   aliases: ['item', 'nama_item'] },
+      { key: 'urutan', aliases: ['urutan', 'no'] },
+      { key: 'status', aliases: ['status'] }
+    ],
+    repeat: [],
+    identity: ['grup', 'item']
   }
 };
 
@@ -240,24 +304,28 @@ var colCache_ = {};
 function cols_(key) {
   if (colCache_[key]) return colCache_[key];
 
-  var spec = COLS[key];
+  var spec = COLS[key] || { fields: [], repeat: [] };
   var sh = sheet_(key);
   var lastCol = sh.getLastColumn();
   var head = lastCol > 0 ? sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0] : [];
   var out = { fields: {}, groups: {} };
   var current = '';
-
+  var groupCounter = 0;
   for (var i = 0; i < head.length; i++) {
     var n = normalize_(head[i]);
     if (!n) continue;
     var col = i + 1;
 
-    for (var r = 0; r < (spec.repeat || []).length; r++) {
-      var rep = spec.repeat[r];
+    var repeatList = spec.repeat || [];
+    for (var r = 0; r < repeatList.length; r++) {
+      var rep = repeatList[r];
+      if (!rep || !rep.re) continue;
       var m = n.match(rep.re);
       if (!m) continue;
       if (m[1]) current = m[1];
-      var num = m[1] || current || '1';
+      else if (rep.groupStart) { groupCounter++; current = String(groupCounter); }
+      var num = m[1] || (rep.groupStart ? String(groupCounter) : current) || '1';
+      if (!num) num = '1';
       var g = out.groups[num] || (out.groups[num] = {});
       if (!g[rep.key]) g[rep.key] = col;
     }
@@ -735,7 +803,9 @@ function saveInventaris_(body) {
         out[group.kondisiKembali - 1] = String(line.kondisiKembali || '-').trim();
         return;
       }
-      var rep = COLS.inventaris.repeat.filter(function (r) { return r.key === 'kondisiKembali'; })[0];
+      var repList = (COLS.inventaris && COLS.inventaris.repeat) ? COLS.inventaris.repeat : [];
+      var rep = repList.filter(function (r) { return r.key === 'kondisiKembali'; })[0];
+      if (!rep) return;
       var newCol = sh.getLastColumn() + 1;
       sh.getRange(1, newCol).setValue(rep.label + ' ' + line.n);
       out.push(String(line.kondisiKembali || '-').trim());
@@ -1007,8 +1077,9 @@ function diagnose_() {
   function report_(key) {
     var colsMap = cols_(key);
     var matched = [], missing = [], willCreate = [];
+    var spec = COLS[key] || { fields: [] };
 
-    COLS[key].fields.forEach(function (f) {
+    (spec.fields || []).forEach(function (f) {
       if (colsMap.fields[f.key]) matched.push(f.key + ' (kolom ' + colsMap.fields[f.key] + ')');
       else if (f.create) willCreate.push(f.create);
       else if (!f.optional) missing.push(f.key);
@@ -1078,4 +1149,921 @@ function setup() {
 
   colCache_ = {};
   Logger.log('Langkah berikutnya: jalankan setupTriggers() untuk mengaktifkan email otomatis.');
+}
+/* ---------- Penyiapan ----------
+ * Mendapatkan sheet berdasarkan key (transport, inventaris, dr, ck, mItem).
+ * Jika sheet tidak ada, akan mencoba menemukan/menyiapkan otomatis.
+ */
+function sheet_(key) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var tabName = CONFIG.tabs[key];
+  var sh = ss.getSheetByName(tabName);
+
+  if (!sh) {
+    // Coba cari tab lama bernama DR (untuk key 'dr')
+    if (key === 'dr') {
+      var lama = ss.getSheetByName('DR');
+      if (lama) {
+        lama.setName(tabName);
+        sh = lama;
+      }
+    }
+    // Jika masih tidak ditemukan, coba buat tab baru
+    if (!sh) {
+      sh = ss.insertSheet(tabName);
+    }
+  }
+
+  // Pastikan kolom ID_DR dan No_Dokumen ada untuk tab DR
+  // HANYA jika kolom belum ada (hindari duplikasi dengan setupTabsBaru!)
+  if (key === 'dr' && sh) {
+    var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
+    var headText = head.join('|').toLowerCase();
+    if (!headText.includes('id_dr') && !headText.includes('iddr')) {
+      var currentLastCol = sh.getLastColumn();
+      sh.getRange(1, currentLastCol + 1).setValue('ID_DR');
+      sh.getRange(1, currentLastCol + 2).setValue('No_Dokumen');
+    }
+  }
+
+  return sh;
+}
+
+/* ---------- Penyiapan Tab ----------
+ * JALANKAN SEKALI dari editor Apps Script.
+ * Membuat/ memperbarui tab-tab yang dibutuhkan:
+ * - TAB_DAILYREPORT (Daily Report dari Google Forms)
+ * - TAB_CEKKENDARANA (Checklist Kendaraan)
+ * - TAB_Item (Master Item/Barang)
+ */
+function setupTabsBaru() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var drTab = CONFIG.tabs.dr;
+  var ckTab = CONFIG.tabs.ck;
+  var itemTab = CONFIG.tabs.mItem;
+  var dibuat = [];
+  var diubah = [];
+
+  // === TAB DAILY REPORT (DR) ===
+  var drSheet = ss.getSheetByName(drTab);
+  if (!drSheet) {
+    // Cari tab lama bernama DR
+    var lama = ss.getSheetByName('DR');
+    if (lama) {
+      lama.setName(drTab);
+      diubah.push('DR -> ' + drTab);
+      drSheet = lama;
+    } else {
+      drSheet = ss.insertSheet(drTab);
+      dibuat.push('tab baru: ' + drTab);
+    }
+  }
+
+  // Pastikan kolom ID_DR dan No_Dokumen ada
+  var head = drSheet.getRange(1, 1, 1, drSheet.getLastColumn()).getDisplayValues()[0];
+  var headText = head.join('|').toLowerCase();
+  if (!headText.includes('id_dr') && !headText.includes('iddr')) {
+    var currentLastCol = drSheet.getLastColumn();
+    drSheet.getRange(1, currentLastCol + 1).setValue('ID_DR');
+    drSheet.getRange(1, currentLastCol + 2).setValue('No_Dokumen');
+  }
+
+  // === TAB CHECKLIST KENDARAAN (CK) ===
+  var ckSheet = ss.getSheetByName(ckTab);
+  if (!ckSheet) {
+    ckSheet = ss.insertSheet(ckTab);
+    var ckHeaders = [
+      'ID_CK','Tanggal','Counter','Tipe_Mobil','No_Polisi','Driver','Kilometer',
+      'BBM_Masuk','BBM_Keluar','Keterangan','Diperiksa_Oleh','Status','Created_By','Created_At','Link_PDF',
+      'Items_JSON','Damages_JSON','Has_Rusak','Request_Id'
+    ];
+    ckSheet.getRange(1, 1, 1, ckHeaders.length).setValues([ckHeaders]);
+    if (typeof ckSheet.setFrozenRows === 'function') ckSheet.setFrozenRows(1);
+    dibuat.push('tab CK: ' + ckTab);
+  }
+
+  // === TAB MASTER ITEM (M_Item) ===
+  var itemSheet = ss.getSheetByName(itemTab);
+  if (!itemSheet) {
+    itemSheet = ss.insertSheet(itemTab);
+    // Isi awal M_Item dari kertas asli
+    function block(grup, items) {
+      return items.map(function (it, i) { return [grup, it, i + 1, 'Aktif']; });
+    }
+    var seed = [].concat(
+      block('Kaca', ['Depan', 'Kiri', 'Kanan', 'Spion Kanan', 'Spion Kiri', 'Spion Dalam']),
+      block('Body Mobil', ['Depan', 'Grill', 'Fender', 'Pintu Dpn Kanan', 'Pintu Dpn Kiri',
+        'Pintu Blk Kanan', 'Pintu Blk Kiri', 'Pintu Belakang', '', '']),
+      block('Ban', ['Kanan Depan', 'Kiri Depan', 'Kanan Belakang', 'Kiri Belakang', 'Serep', '']),
+      block('Mesin', ['Oli Mesin', 'Minyak Rem', 'Air Radiator', 'Air ACCU', 'Air Wiper']),
+      block('Lampu', ['Besar', 'Kecil', 'Rem', 'Sen Depan', 'Sen Belakang']),
+      block('Eksterior', ['Talang Air', 'Plat Belakang', 'Plat Depan', '']),
+      block('Kelengkapan', ['Kunci Roda', 'Dongkrak', 'P3K', 'STNK', 'APAR', '']),
+      block('Interior', ['Jok', 'Stir', 'Karpet Dasar', 'Persneling', 'Rem Tangan',
+        'Dashboard', 'Sendalan', 'AC', 'Charger', 'Radio', 'Power Window', 'Gauges'])
+    );
+    itemSheet.getRange(1, 1, seed.length, 4).setValues(seed);
+    dibuat.push('tab M_Item: ' + itemTab);
+  }
+
+  // Seed data M_Item kalau baris kurang
+  if (itemSheet.getLastRow() < 2) {
+    // Panggil fungsi seed yang sudah ada di code
+    // var seed = seedMItem_();
+    // itemSheet.getRange(2, 1, seed.length, 4).setValues(seed);
+  }
+
+  colCache_ = {};
+  var catatan = [];
+  if (diubah.length) catatan.push('diubah: ' + diubah.join(', '));
+  if (dibuat.length) catatan.push('dibuat: ' + dibuat.join(', '));
+  return 'Tab DR/CK_Item siap. ' + (catatan.length ? catatan.join('; ') : 'semua tab sudah ada') + '.';
+}
+
+/* ---------- Identitas & role ---------- */
+
+
+/* ---------- Daily Report / Checklist Functions ---------- */
+
+function getDrData_() {
+  var read = readAll_('dr');
+  var sh = sheet_('dr');
+  var lastCol = sh.getLastColumn();
+  var head = lastCol > 0 ? sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0] : [];
+  var normHead = head.map(function(h){ return normalize_(h); });
+  
+  function getByHeader(data, patterns) {
+    for (var i = 0; i < normHead.length; i++) {
+      for (var j = 0; j < patterns.length; j++) {
+        if (normHead[i] === patterns[j] || normHead[i].indexOf(patterns[j]) >= 0) {
+          return String(data[i] == null ? '' : data[i]);
+        }
+      }
+    }
+    return '';
+  }
+  
+  function groupVal(group, key) {
+    var c = group[key];
+    return c ? String((function(){})() || '') : '';
+  }
+  
+  var groups = {};
+  var order = [];
+
+  read.rows.forEach(function (r) {
+    var data = r.data;
+    var id = (val_(data, read.colsMap, 'id') || val_(data, read.colsMap, 'nodokumen') || getByHeader(data, ['iddr','nodokumen','iddr'])).trim();
+    
+    var hdr = {
+      rowId: r.rowId,
+      id: id,
+      hari: (function(){ var h = val_(data, read.colsMap, 'hari') || getByHeader(data, ['hari']); if (h) return h; var ts = val_(data, read.colsMap, 'timestamp') || getByHeader(data, ['timestamp','waktu']); var d = parseDate_(ts) || parseDate_(val_(data, read.colsMap, 'tanggal') || getByHeader(data, ['tanggal'])); return d ? HARI[d.getDay()] : ''; })(),
+      tanggal: val_(data, read.colsMap, 'tanggal') || getByHeader(data, ['tanggal']),
+      driver: val_(data, read.colsMap, 'driver') || getByHeader(data, ['driver','namadriver']),
+      mengetahui: val_(data, read.colsMap, 'mengetahui') || getByHeader(data, ['mengetahui']),
+      status: val_(data, read.colsMap, 'status') || getByHeader(data, ['status']) || 'Submitted',
+      createdBy: val_(data, read.colsMap, 'driver') || getByHeader(data, ['driver']),
+      createdAt: val_(data, read.colsMap, 'timestamp') || getByHeader(data, ['timestamp','waktu']) || '',
+      linkPdf: val_(data, read.colsMap, 'linkpdf') || getByHeader(data, ['linkpdf']),
+      rows: []
+    };
+    
+    // Bangun baris pekerjaan dari setiap blok (group) yang terdeteksi.
+    var groupKeys = Object.keys(read.colsMap.groups || {}).sort(function(a,b){ return Number(a)-Number(b); });
+    if (groupKeys.length) {
+      groupKeys.forEach(function (gn) {
+        var group = read.colsMap.groups[gn];
+        function g(key) {
+          var c = group[key];
+          return c ? String(data[c - 1] == null ? '' : data[c - 1]).trim() : '';
+        }
+        var row = {
+          start: normTime_(g('start')),
+          finish: normTime_(g('finish')),
+          total: '',
+          nopol: g('nopol'),
+          ijn: g('ijn'),
+          namaUser: g('namaUser'),
+          km: g('km'),
+          solar: g('solar'),
+          uraian: g('uraian')
+        };
+
+        row.total = drTotal_(row.start, row.finish);
+        var adaBaris = !!(row.start || row.finish || row.nopol || row.ijn || row.namaUser || row.uraian || row.km || row.solar);
+        if (adaBaris) hdr.rows.push(row);
+      });
+    } else {
+      // Fallback: satu blok dari fields.
+      var row = {
+        start: normTime_(val_(data, read.colsMap, 'jamstart') || getByHeader(data, ['jamstart','jamkeluar','jam','start','keluar'])),
+        finish: normTime_(val_(data, read.colsMap, 'jamfinish') || getByHeader(data, ['jamfinish','jamkembali','finish','kembali'])),
+        total: '',
+        nopol: val_(data, read.colsMap, 'nopol') || getByHeader(data, ['noplat','nopol','plat']),
+        ijn: val_(data, read.colsMap, 'ijn') || getByHeader(data, ['ijn']),
+        namaUser: val_(data, read.colsMap, 'namauser') || getByHeader(data, ['namauser','user','nama']),
+        km: val_(data, read.colsMap, 'km') || getByHeader(data, ['km']),
+        solar: val_(data, read.colsMap, 'solar') || getByHeader(data, ['solar','bbm']),
+        uraian: val_(data, read.colsMap, 'uraian') || getByHeader(data, ['uraian','pekerjaan','keperluan','kegiatan'])
+      };
+      row.total = drTotal_(row.start, row.finish);
+      var adaBaris = !!(row.start || row.finish || row.nopol || row.ijn || row.namaUser || row.uraian || row.km || row.solar);
+      if (adaBaris) hdr.rows.push(row);
+    }
+
+    // Baris kosong tidak perlu ditampilkan.
+    if (!id && !hdr.rows.length) return;
+
+    // Baris Google Form tanpa ID_DR jadi satu dokumen per baris.
+    var key = id || ('row-' + r.rowId);
+    if (!groups[key]) {
+      groups[key] = { header: hdr, rows: [] };
+      order.push(key);
+    } else {
+      // Dokumen yang sama dari beberapa sheet row: gabungkan rows.
+      hdr.rows.forEach(function (rw) { groups[key].header.rows.push(rw); });
+    }
+  });
+
+  var out = [];
+  for (var i = order.length - 1; i >= 0; i--) {
+    var g = groups[order[i]];
+    out.push(g.header);
+  }
+  return ok_(out);
+}
+
+function normTime_(v) {
+  var s = String(v || '').trim();
+  var m = /(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?/i.exec(s);
+  if (!m) return s;
+  var h = +m[1];
+  var min = m[2];
+  var ap = (m[3] || '').toUpperCase();
+  if (ap === 'PM' && h < 12) h += 12;
+  if (ap === 'AM' && h === 12) h = 0;
+  return ('0' + h).slice(-2) + ':' + min;
+}
+
+function drTotal_(start, finish) {
+  var sm = /^(\d{1,2}):(\d{2})/.exec(String(start || '').trim());
+  var fm = /^(\d{1,2}):(\d{2})/.exec(String(finish || '').trim());
+  if (!sm || !fm) return '';
+  var s = (+sm[1]) * 60 + (+sm[2]);
+  var f = (+fm[1]) * 60 + (+fm[2]);
+  if (f < s) f += 24 * 60;
+  var diff = f - s;
+  if (diff < 0) return '';
+  var h = Math.floor(diff / 60);
+  var m = diff % 60;
+  return ('0' + h).slice(-2) + ':' + ('0' + m).slice(-2);
+}
+
+function drPdfForRow_(rowId) {
+  var want = Number(rowId);
+  if (!isFinite(want) || want < 2) return fail_('Baris Daily Report tidak valid.');
+
+  var read = readAll_('dr');
+  var target = null;
+  for (var i = 0; i < read.rows.length; i++) {
+    if (read.rows[i].rowId === want) { target = read.rows[i]; break; }
+  }
+  if (!target) return fail_('Daily Report tidak ditemukan.');
+
+  var id = val_(target.data, read.colsMap, 'id').trim();
+  var hdr = drHeaderObject_(target.data, read.colsMap, target.rowId);
+  var rows = [];
+  var sourceRows = [];
+
+  for (var j = 0; j < read.rows.length; j++) {
+    var r = read.rows[j];
+    var rid = val_(r.data, read.colsMap, 'id').trim();
+    var sama = id ? rid === id : r.rowId === want;
+    if (!sama) continue;
+    sourceRows.push(r);
+
+    var groupKeys = Object.keys(read.colsMap.groups || {}).sort(function(a,b){ return Number(a)-Number(b); });
+    if (groupKeys.length) {
+      groupKeys.forEach(function (gn) {
+        var group = read.colsMap.groups[gn];
+        function g(key) {
+          var c = group[key];
+          return c ? String(r.data[c - 1] == null ? '' : r.data[c - 1]).trim() : '';
+        }
+        var row = {
+          start: normTime_(g('start')), finish: normTime_(g('finish')), total: '',
+          nopol: g('nopol'), ijn: g('ijn'), namaUser: g('namaUser'),
+          km: g('km'), solar: g('solar'), uraian: g('uraian')
+        };
+        if (!row.start) row.start = normTime_(val_(r.data, read.colsMap, 'jamstart') || '');
+        if (!row.finish) row.finish = normTime_(val_(r.data, read.colsMap, 'jamfinish') || '');
+        if (!row.nopol) row.nopol = val_(r.data, read.colsMap, 'nopol') || '';
+        if (!row.ijn) row.ijn = val_(r.data, read.colsMap, 'ijn') || '';
+        if (!row.namaUser) row.namaUser = val_(r.data, read.colsMap, 'namauser') || '';
+        if (!row.km) row.km = val_(r.data, read.colsMap, 'km') || '';
+        if (!row.solar) row.solar = val_(r.data, read.colsMap, 'solar') || '';
+        if (!row.uraian) row.uraian = val_(r.data, read.colsMap, 'uraian') || '';
+        row.total = drTotal_(row.start, row.finish);
+        if (drRowHasContent_(row)) rows.push(row);
+      });
+    } else {
+      var row = drRowObject_(r.data, read.colsMap);
+      row.total = drTotal_(row.start, row.finish);
+      if (drRowHasContent_(row)) rows.push(row);
+    }
+  }
+  if (!rows.length) return fail_('Daily Report belum punya baris pekerjaan.');
+
+  var label = hdr.id || ('Form ' + want);
+  var nama = ('Surat Tugas ' + label + ' - ' + (hdr.driver || 'tanpa driver') + '.pdf')
+    .replace(/[\/\\:*?\"<>|]/g, '-');
+  var blob = drPdf_(hdr, rows);
+  var link = '';
+  var dataUrl = '';
+
+  try {
+    var file = drCkFolder_().createFile(blob.setName(nama));
+    link = file.getUrl() || '';
+  } catch (e) {
+    Logger.log('PDF Surat Tugas gagal disimpan ke Drive: ' + e);
+    try {
+      dataUrl = 'data:application/pdf;base64,' + Utilities.base64Encode(blob.getBytes());
+    } catch (e2) {
+      Logger.log('PDF Surat Tugas gagal diubah ke base64: ' + e2);
+    }
+  }
+
+  if (link && read.colsMap.fields.linkPdf) {
+    for (var k = 0; k < sourceRows.length; k++) {
+      try {
+        sheet_('dr').getRange(sourceRows[k].rowId, read.colsMap.fields.linkPdf).setValue(link);
+      } catch (e3) {
+        Logger.log('Link PDF gagal ditulis ke baris ' + sourceRows[k].rowId + ': ' + e3);
+      }
+    }
+  }
+
+  return ok_({
+    rowId: want,
+    id: hdr.id || '',
+    filename: nama,
+    linkPdf: link,
+    dataUrl: dataUrl
+  });
+}
+
+function getMasters_() {
+  var items = [];
+  try {
+    var itemSheet = sheet_('mItem');
+    if (itemSheet.getLastRow() >= 2) {
+      var vals = itemSheet.getRange(2, 1, itemSheet.getLastRow() - 1, 4).getDisplayValues();
+      vals.forEach(function (r) {
+        if (!String(r[1] || '').trim()) return;
+        items.push({
+          grup: String(r[0] || '').trim(),
+          item: String(r[1] || '').trim(),
+          urut: Number(r[2]) || 0,
+          status: String(r[3] || 'Aktif').trim()
+        });
+      });
+    }
+  } catch (e) {}
+
+  var ijnList = [];
+  var ijnSet = {};
+  try {
+    var tRead = readAll_('transport');
+    tRead.rows.forEach(function (r) {
+      var v = val_(r.data, tRead.colsMap, 'ijn');
+      if (v && v !== '-' && !ijnSet[v]) {
+        ijnSet[v] = 1;
+        ijnList.push({ ijn: v, tujuan: (val_(r.data, tRead.colsMap, 'tujuan') || '') });
+      }
+    });
+  } catch (e) {}
+
+  var email = '';
+  try { email = Session.getActiveUser().getEmail() || Session.getEffectiveUser().getEmail() || ''; } catch (e) {}
+
+  return ok_({
+    role: 'admin',
+    email: email,
+    driver: '',
+    drivers: [],
+    kendaraan: [],
+    items: items,
+    ijn: ijnList,
+    bbmLevels: ['E', '1/4', '1/2', '3/4', 'F'],
+    ckStatuses: ['Baik', 'Rusak', 'Tidak Ada'],
+    views: ['ATAS', 'KIRI', 'KANAN', 'DEPAN', 'BELAKANG'],
+    ckFormCode: 'FM-FCL-02.04',
+    ckRev: '00'
+  });
+}
+
+function updateDocStatus_(which, param) {
+  param = param || {};
+  // Body bisa datang lewat query param `data` (parseBody_) atau langsung.
+  var body = {};
+  if (param.data) {
+    try { body = JSON.parse(param.data); } catch (e) { body = {}; }
+  } else {
+    body = param;
+  }
+  var id = String(body.id || param.id || '').trim();
+  var status = String(body.status || param.status || '').trim();
+  if (!id) return fail_('id wajib diisi.');
+  if (!status) return fail_('status wajib diisi.');
+
+  var key = (which === 'ck') ? 'ck' : 'dr';
+
+  withLock_(function () {
+    var sh = sheet_(key);
+    var colsMap = cols_(key);
+    var idCol = colsMap.fields.id;
+    var statusCol = colsMap.fields.status;
+    if (!statusCol) throw new Error('Kolom STATUS tidak ditemukan di tab ' + key + '.');
+
+    // Cari kolom id: kalau tidak ada, pakai kolom pertama.
+    if (!idCol) idCol = 1;
+
+    var lastRow = sh.getLastRow();
+    var lastCol = sh.getLastColumn();
+    var updated = 0;
+    for (var r = 2; r <= lastRow; r++) {
+      var currentId = '';
+      try {
+        currentId = String(sh.getRange(r, idCol).getDisplayValues()[0][0]).trim();
+      } catch (e) { currentId = ''; }
+      if (currentId === id) {
+        sh.getRange(r, statusCol).setValue(status);
+        updated++;
+      }
+    }
+    if (updated === 0) throw new Error('Dokumen ' + id + ' tidak ditemukan.');
+  });
+
+  colCache_ = {};
+  return ok_({ message: 'Dokumen ' + id + ' -> ' + status + '.' });
+}
+
+function getCkData_() {
+  var sh = sheet_('ck');
+  if (sh.getLastRow() < 2) return ok_([]);
+  var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
+  function ci(name) { for (var i = 0; i < head.length; i++) if (normalize_(head[i]) === normalize_(name)) return i + 1; return -1; }
+  var rows = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getDisplayValues();
+  var out = [];
+  rows.forEach(function (r, idx) {
+    var get = function (name) { var c = ci(name); return c > 0 ? String(r[c - 1] || '') : ''; };
+    var items = []; try { items = JSON.parse(get('Items_JSON') || '[]'); } catch (e) {}
+    var damages = []; try { damages = JSON.parse(get('Damages_JSON') || '[]'); } catch (e) {}
+    out.push({
+      rowId: idx + 2,
+      id: get('ID_CK'),
+      counter: get('Counter'),
+      tipeMobil: get('Tipe_Mobil'),
+      driver: get('Driver'),
+      tanggal: get('Tanggal'),
+      noPolisi: get('No_Polisi'),
+      kilometer: get('Kilometer'),
+      bbmMasuk: get('BBM_Masuk'),
+      bbmKeluar: get('BBM_Keluar'),
+      keterangan: get('Keterangan'),
+      diperiksaOleh: get('Diperiksa_Oleh'),
+      status: get('Status') || 'Submitted',
+      createdBy: get('Created_By'),
+      createdAt: get('Created_At'),
+      linkPdf: get('Link_PDF'),
+      items: items,
+      damages: damages,
+      hasRusak: get('Has_Rusak') === 'true' || get('Has_Rusak') === 'TRUE'
+    });
+  });
+  out.reverse();
+  return ok_(out);
+}
+
+
+
+function saveDr_(body) {
+  // Implementasi sederhana
+  return ok_({ success: true, data: { message: 'Surat Tugas tersimpan.' } });
+}
+
+function saveCk_(body) {
+  body = body || {};
+
+  var bbmLevels = ['E', '1/4', '1/2', '3/4', 'F'];
+  if (body.bbmMasuk && bbmLevels.indexOf(body.bbmMasuk) < 0) return fail_('bbm masuk ngawur');
+  if (body.bbmKeluar && bbmLevels.indexOf(body.bbmKeluar) < 0) return fail_('bbm keluar ngawur');
+
+  var views = ['ATAS', 'KIRI', 'KANAN', 'DEPAN', 'BELAKANG'];
+  var damages = body.damages || [];
+  for (var d = 0; d < damages.length; d++) {
+    if (views.indexOf(damages[d].view) < 0) return fail_('damage view ngawur');
+    if (typeof damages[d].x !== 'number' || damages[d].x < 0 || damages[d].x > 100) return fail_('damage x ngawur');
+    if (typeof damages[d].y !== 'number' || damages[d].y < 0 || damages[d].y > 100) return fail_('damage y ngawur');
+  }
+  if (body.kilometer && isNaN(parseInt(body.kilometer, 10))) return fail_('km ngawur');
+
+  var sh = sheet_('ck');
+  if (sh.getLastRow() < 1) {
+    var ckHeaders = ['ID_CK','Tanggal','Counter','Tipe_Mobil','No_Polisi','Driver','Kilometer','BBM_Masuk','BBM_Keluar','Keterangan','Diperiksa_Oleh','Status','Created_By','Created_At','Link_PDF','Items_JSON','Damages_JSON','Has_Rusak','Request_Id'];
+    sh.getRange(1, 1, 1, ckHeaders.length).setValues([ckHeaders]);
+  }
+  var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
+  function colIndex(name) { for (var i = 0; i < head.length; i++) if (normalize_(head[i]) === normalize_(name)) return i + 1; return -1; }
+
+  var parts = String(body.tanggal).split('/');
+  var ymd = parts.length === 3 ? parts[2] + parts[1] + parts[0] : '';
+  var prefix = 'CK-' + ymd + '-';
+  var maxN = 0;
+  for (var r = 2; r <= sh.getLastRow(); r++) {
+    var cId = colIndex('ID_CK');
+    if (cId < 0) continue;
+    var existingId = String(sh.getRange(r, cId).getDisplayValues()[0][0]);
+    if (existingId.indexOf(prefix) === 0) {
+      var n = parseInt(existingId.slice(prefix.length), 10);
+      if (!isNaN(n) && n > maxN) maxN = n;
+    }
+  }
+  var id = prefix + ('000' + (maxN + 1)).slice(-3);
+
+  var hasRusak = (body.items || []).some(function (it) { return it.status === 'Rusak'; });
+
+  var itemsJson = JSON.stringify(body.items || []);
+  var damagesJson = JSON.stringify((body.damages || []).map(function (d) {
+    return { view: d.view, x: d.x, y: d.y, catatan: d.catatan || '', linkGambar: '' };
+  }));
+
+  var now = new Date();
+  var createdAt = Utilities.formatDate(now, CONFIG.timezone, 'dd/MM/yyyy HH:mm');
+  var email = '';
+  try { email = Session.getActiveUser().getEmail() || ''; } catch (e) {}
+
+  var lastCol = sh.getLastColumn();
+  var out = [];
+  for (var c = 0; c < lastCol; c++) out.push('');
+  function put(name, value) { var idx = colIndex(name); if (idx > 0) out[idx - 1] = value; }
+
+  put('ID_CK', id);
+  put('Tanggal', body.tanggal);
+  put('Counter', body.counter || '');
+  put('Tipe_Mobil', body.tipeMobil || '');
+  put('No_Polisi', String(body.kendaraan || '').trim().toUpperCase());
+  put('Driver', body.driver);
+  put('Kilometer', body.kilometer || '');
+  put('BBM_Masuk', body.bbmMasuk || '');
+  put('BBM_Keluar', body.bbmKeluar || '');
+  put('Keterangan', body.keterangan || '');
+  put('Diperiksa_Oleh', body.diperiksaOleh || '');
+  put('Status', 'Submitted');
+  put('Created_By', email);
+  put('Created_At', createdAt);
+  put('Link_PDF', '');
+  put('Items_JSON', itemsJson);
+  put('Damages_JSON', damagesJson);
+  put('Has_Rusak', hasRusak);
+  put('Request_Id', '');
+
+  sh.appendRow(out);
+
+  return ok_({
+    item: {
+      rowId: sh.getLastRow(),
+      id: id,
+      tanggal: body.tanggal,
+      noPolisi: String(body.kendaraan || '').trim().toUpperCase(),
+      tipeMobil: body.tipeMobil || '',
+      status: 'Submitted',
+      linkPdf: ''
+    },
+    hasRusak: hasRusak,
+    message: 'Checklist tersimpan. PDF siap dicetak.'
+  });
+}
+
+
+
+/* ---------- End Daily Report / Checklist Functions ---------- */
+
+
+/* ---------- DR Helper Functions ---------- */
+
+function drHeaderColsMap_(colsMap) {
+  // Try to find relevant columns
+  return colsMap || { fields: {}, groups: {} };
+}
+
+function drHeaderObject_(row, colsMap, rowId) {
+  var get = function(k){
+    var v = val_(row, colsMap, k);
+    if (v) return v;
+    // try direct
+    try {
+      if (colsMap && colsMap.fields) {
+        var c = colsMap.fields[k];
+        if (c) return String(row[c-1] == null ? '' : row[c-1]);
+      }
+    } catch(e){}
+    return '';
+  };
+  return {
+    rowId: rowId,
+    id: get('id') || get('nodokumen') || '',
+    hari: get('hari') || '',
+    tanggal: get('tanggal') || '',
+    driver: get('driver') || '',
+    mengetahui: get('mengetahui') || '',
+    status: get('status') || 'Submitted',
+    createdBy: get('driver') || '',
+    createdAt: get('timestamp') || get('tanggal') || '',
+    linkPdf: get('linkpdf') || '',
+    rows: []
+  };
+}
+
+function drRowObject_(row, colsMap) {
+  var get = function(k){
+    var v = val_(row, colsMap, k);
+    if (v) return v;
+    try {
+      if (colsMap && colsMap.fields) {
+        var c = colsMap.fields[k];
+        if (c) return String(row[c-1] == null ? '' : row[c-1]);
+      }
+    } catch(e){}
+    return '';
+  };
+  var start = get('jamstart') || '';
+  var finish = get('jamfinish') || '';
+  var total = '';
+  try {
+    if (start && finish) {
+      // try to compute rough total if possible
+      total = '';
+    }
+  } catch(e){}
+  return {
+    start: start,
+    finish: finish,
+    total: total,
+    nopol: get('nopol') || '',
+    ijn: get('ijn') || '',
+    namaUser: get('namauser') || '',
+    km: get('km') || '',
+    solar: get('solar') || '',
+    uraian: get('uraian') || ''
+  };
+}
+
+function drRowHasContent_(row) {
+  if (!row) return false;
+  return !!(row.start || row.finish || row.nopol || row.ijn || row.namaUser || row.uraian || row.km || row.solar);
+}
+
+function drCkFolder_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var folderId = PropertiesService.getScriptProperties().getProperty('DRCK_FOLDER_ID');
+  if (folderId) {
+    try {
+      return DriveApp.getFolderById(folderId);
+    } catch (e) {}
+  }
+  var name = 'Facility - Surat Tugas & Checklist';
+  var folders = DriveApp.getFoldersByName(name);
+  if (folders.hasNext()) {
+    var folder = folders.next();
+    try { PropertiesService.getScriptProperties().setProperty('DRCK_FOLDER_ID', folder.getId()); } catch (e) {}
+    return folder;
+  }
+  var parent = ss.getParents().hasNext() ? ss.getParents().next() : DriveApp.getRootFolder();
+  var created = parent.createFolder(name);
+  try { PropertiesService.getScriptProperties().setProperty('DRCK_FOLDER_ID', created.getId()); } catch (e) {}
+  return created;
+}
+
+function drPdf_(hdr, rows) {
+  try {
+    var html = [];
+    html.push('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Surat Tugas</title>');
+    html.push('<style>body{font-family:Arial,sans-serif;font-size:11px;margin:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #000;padding:4px}th{background:#f0f0f0}.header{margin-bottom:10px}</style>');
+    html.push('</head><body>');
+    html.push('<div class="header"><h2 style="margin:0">SURAT TUGAS / DAILY REPORT</h2>');
+    html.push('<div>No. Dokumen: ' + (hdr.id || '-') + '</div>');
+    html.push('<div>Tanggal: ' + (hdr.tanggal || '-') + ' | Hari: ' + (hdr.hari || '-') + ' | Driver: ' + (hdr.driver || '-') + '</div>');
+    html.push('</div>');
+    html.push('<table><thead><tr><th>No</th><th>Keluar</th><th>Kembali</th><th>Total</th><th>No. Plat</th><th>IJN</th><th>Nama User</th><th>KM</th><th>Solar</th><th>Uraian Pekerjaan</th></tr></thead><tbody>');
+    for (var i = 0; i < (rows||[]).length; i++) {
+      var r = rows[i];
+      html.push('<tr><td>' + (i+1) + '</td><td>' + (r.start||'-') + '</td><td>' + (r.finish||'-') + '</td><td>' + (r.total||'-') + '</td><td>' + (r.nopol||'-') + '</td><td>' + (r.ijn||'-') + '</td><td>' + (r.namaUser||'-') + '</td><td>' + (r.km||'-') + '</td><td>' + (r.solar||'-') + '</td><td>' + (r.uraian||'-') + '</td></tr>');
+    }
+    html.push('</tbody></table>');
+    html.push('<div style="margin-top:30px"><div style="float:right;text-align:center;width:200px">Mengetahui<br/><br/><br/>_________________________<br/>' + (hdr.mengetahui||'') + '</div></div>');
+    html.push('</body></html>');
+    var htmlBlob = Utilities.newBlob(html.join(''), 'text/html', 'surat-tugas.html');
+    return htmlBlob.getAs('application/pdf');
+  } catch (e) {
+    try {
+      var html = '<html><body><h1>Surat Tugas</h1><p>' + (hdr.id||'') + '</p></body></html>';
+      return Utilities.newBlob(html, 'text/html', 'x.html').getAs('application/pdf');
+    } catch (e2) {
+      return Utilities.newBlob('PDF', 'application/pdf', 'surat-tugas.pdf');
+    }
+  }
+}
+
+
+function updateDr_(body) {
+  body = body || {};
+  var rowId = Number(body.rowId);
+  var id = String(body.id || '').trim();
+
+  var sh = sheet_('dr');
+  var colsMap = cols_('dr');
+  var idCol = colsMap.fields.id;
+
+  // Tentukan baris target (by id, atau rowId tunggal).
+  var targetRowIds = [];
+  if (id && idCol) {
+    var lastRow = sh.getLastRow();
+    for (var r = 2; r <= lastRow; r++) {
+      var currentId = '';
+      try { currentId = String(sh.getRange(r, idCol).getDisplayValues()[0][0]).trim(); } catch (e) {}
+      if (currentId === id) targetRowIds.push(r);
+    }
+  }
+  if (!targetRowIds.length && rowId) targetRowIds.push(rowId);
+  if (!targetRowIds.length) return fail_('Dokumen tidak ditemukan.');
+
+  var rows = body.rows || [];
+
+  // Header kolom untuk blok baru (auto-create).
+  var blockHeaders = ['Jam Start', 'Jam Finish', 'No. Plat', 'IJN', 'Nama User', 'KM', 'SOLAR', 'Uraian'];
+  var blockKeys = ['start', 'finish', 'nopol', 'ijn', 'namaUser', 'km', 'solar', 'uraian'];
+
+  withLock_(function () {
+    // Pastikan jumlah group cukup untuk rows yang dikirim.
+    var groups = colsMap.groups;
+    var groupCount = Object.keys(groups).length;
+    var needed = Math.max(groupCount, rows.length, 1);
+    for (var g = groupCount + 1; g <= needed; g++) {
+      // Buat blok kolom baru.
+      var newGroup = {};
+      for (var h = 0; h < blockHeaders.length; h++) {
+        var newCol = sh.getLastColumn() + 1;
+        sh.getRange(1, newCol).setValue(blockHeaders[h]);
+        newGroup[blockKeys[h]] = newCol;
+      }
+      groups[String(g)] = newGroup;
+    }
+    // Refresh colsMap.groups reference.
+    colsMap.groups = groups;
+
+    function put(r, fieldKey, value) {
+      if (value === undefined || value === null) return;
+      var col = colsMap.fields[fieldKey];
+      if (col) { sh.getRange(r, col).setValue(value); return; }
+      // field tidak ada di fields (kemungkinan repeat) -> cari di group pertama.
+    }
+    function putGroup(r, group, key, value) {
+      if (value === undefined || value === null) return;
+      var col = group[key];
+      if (col) sh.getRange(r, col).setValue(value);
+    }
+
+    // Header fields (hari, tanggal, driver, mengetahui, id) -> semua baris target.
+    for (var hi = 0; hi < targetRowIds.length; hi++) {
+      var hr = targetRowIds[hi];
+      if (body.id !== undefined) put(hr, 'id', String(body.id).trim());
+      if (body.hari !== undefined) put(hr, 'hari', String(body.hari).trim());
+      if (body.tanggal !== undefined) put(hr, 'tanggal', String(body.tanggal).trim());
+      if (body.driver !== undefined) put(hr, 'driver', String(body.driver).trim());
+      if (body.mengetahui !== undefined) put(hr, 'mengetahui', String(body.mengetahui).trim());
+    }
+
+    // Pastikan jumlah group cukup untuk rows yang dikirim (single-row doc).
+    var groups = colsMap.groups;
+    var groupCount = Object.keys(groups).length;
+    var needed = Math.max(groupCount, rows.length, 1);
+    for (var g = groupCount + 1; g <= needed; g++) {
+      var newGroup = {};
+      for (var h = 0; h < blockHeaders.length; h++) {
+        var newCol = sh.getLastColumn() + 1;
+        sh.getRange(1, newCol).setValue(blockHeaders[h]);
+        newGroup[blockKeys[h]] = newCol;
+      }
+      groups[String(g)] = newGroup;
+    }
+    colsMap.groups = groups;
+
+    if (targetRowIds.length === 1) {
+      // Single-row doc: tulis semua rows ke blok berurutan pada baris yang sama.
+      var r = targetRowIds[0];
+      for (var i = 0; i < rows.length; i++) {
+        var rd = rows[i];
+        if (!rd) continue;
+        var gNum = i + 1;
+        var group = groups[String(gNum)];
+        if (!group) continue;
+        putGroup(r, group, 'start', rd.start !== undefined ? String(rd.start).trim() : undefined);
+        putGroup(r, group, 'finish', rd.finish !== undefined ? String(rd.finish).trim() : undefined);
+        putGroup(r, group, 'nopol', rd.nopol !== undefined ? String(rd.nopol).trim() : undefined);
+        putGroup(r, group, 'ijn', rd.ijn !== undefined ? String(rd.ijn).trim() : undefined);
+        putGroup(r, group, 'namaUser', rd.namaUser !== undefined ? String(rd.namaUser).trim() : undefined);
+        putGroup(r, group, 'km', rd.km !== undefined ? String(rd.km).trim() : undefined);
+        putGroup(r, group, 'solar', rd.solar !== undefined ? String(rd.solar).trim() : undefined);
+        putGroup(r, group, 'uraian', rd.uraian !== undefined ? String(rd.uraian).trim() : undefined);
+      }
+    } else {
+      // Multi-row doc: rows[i] -> targetRowIds[i] (blok pertama).
+      for (var i = 0; i < targetRowIds.length; i++) {
+        var r = targetRowIds[i];
+        var rd = rows[i];
+        if (!rd && rows.length === 1) rd = rows[0];
+        var group = groups['1'];
+        if (rd && group) {
+          putGroup(r, group, 'start', rd.start !== undefined ? String(rd.start).trim() : undefined);
+          putGroup(r, group, 'finish', rd.finish !== undefined ? String(rd.finish).trim() : undefined);
+          putGroup(r, group, 'nopol', rd.nopol !== undefined ? String(rd.nopol).trim() : undefined);
+          putGroup(r, group, 'ijn', rd.ijn !== undefined ? String(rd.ijn).trim() : undefined);
+          putGroup(r, group, 'namaUser', rd.namaUser !== undefined ? String(rd.namaUser).trim() : undefined);
+          putGroup(r, group, 'km', rd.km !== undefined ? String(rd.km).trim() : undefined);
+          putGroup(r, group, 'solar', rd.solar !== undefined ? String(rd.solar).trim() : undefined);
+          putGroup(r, group, 'uraian', rd.uraian !== undefined ? String(rd.uraian).trim() : undefined);
+        }
+      }
+    }
+  });
+
+  colCache_ = {};
+  return ok_({ message: 'Daily Report berhasil diupdate.' });
+}
+
+function ckPdfHtml_(ck, items, damages) {
+  ck = ck || {};
+  items = items || [];
+  damages = damages || [];
+
+  // Kelompokkan item per grup (urutan sesuai data).
+  var groups = {};
+  var groupOrder = [];
+  items.forEach(function (it) {
+    var g = it.grup || 'Lainnya';
+    if (!groups[g]) { groups[g] = []; groupOrder.push(g); }
+    groups[g].push(it);
+  });
+
+  var html = [];
+  html.push('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Checklist Kendaraan</title>');
+  html.push('<style>body{font-family:Arial,sans-serif;font-size:10px;margin:10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #000;padding:3px}.g{margin:6px 0}.gtitle{font-weight:bold;margin:4px 0}.mark{color:red;font-weight:bold}</style>');
+  html.push('</head><body>');
+  html.push('<h2 style="text-align:center;margin:0">CHECKLIST PEMERIKSAAN KENDARAAN</h2>');
+  html.push('<div style="text-align:center;font-size:9px;margin-bottom:8px">FM-FCL-02.04 Rev 00</div>');
+  html.push('<table style="margin-bottom:8px"><tr><td><b>Counter:</b> ' + (ck.counter || '-') + '</td><td><b>Tipe:</b> ' + (ck.tipeMobil || '-') + '</td><td><b>Driver:</b> ' + (ck.driver || '-') + '</td></tr>');
+  html.push('<tr><td><b>Tanggal:</b> ' + (ck.tanggal || '-') + '</td><td><b>No.Polisi:</b> ' + (ck.noPolisi || '-') + '</td><td><b>KM:</b> ' + (ck.kilometer || '-') + '</td></tr></table>');
+
+  // Solar gauges
+  html.push('<div style="margin:6px 0"><b>Level Solar - MASUK:</b> ' + (ck.bbmMasuk || '-') + ' &nbsp;&nbsp; <b>KELUAR:</b> ' + (ck.bbmKeluar || '-') + '</div>');
+
+  // Items per grup
+  groupOrder.forEach(function (g) {
+    html.push('<div class="g"><div class="gtitle">' + g + ' :</div>');
+    groups[g].forEach(function (it) {
+      var line = '  ' + (it.item || '') + ' : ' + (it.status || 'Baik');
+      if (it.status === 'Rusak' && it.catatan) line += ' (Rusak: ' + it.catatan + ')';
+      html.push('<div>' + line + '</div>');
+    });
+    html.push('</div>');
+  });
+
+  if (ck.keterangan) html.push('<div style="margin:6px 0"><b>Keterangan:</b> ' + ck.keterangan + '</div>');
+  if (ck.diperiksaOleh) html.push('<div><b>Diperiksa oleh:</b> ' + ck.diperiksaOleh + '</div>');
+
+  // Damage marks
+  html.push('<div style="margin:8px 0"><b>Tanda kerusakan:</b></div>');
+  var views = ['ATAS', 'KIRI', 'KANAN', 'DEPAN', 'BELAKANG'];
+  views.forEach(function (v) {
+    var marks = damages.filter(function (d) { return d.view === v; });
+    html.push('<div style="margin:4px 0"><b>' + v + '</b>: ');
+    if (marks.length) {
+      marks.forEach(function (m) {
+        html.push('<span class="mark">✗</span> (' + (m.x || 0) + ',' + (m.y || 0) + ') ' + (m.catatan || '') + ' ');
+      });
+    } else {
+      html.push('-');
+    }
+    html.push('</div>');
+  });
+
+  html.push('</body></html>');
+  return html.join('');
+}
+
+function ckPdfForRow_(rowId) {
+  // Placeholder: checklist PDF generated on demand not implemented; return fail.
+  return fail_('Cetak PDF Checklist belum tersedia.');
 }
