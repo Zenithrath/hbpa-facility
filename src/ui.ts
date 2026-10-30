@@ -259,13 +259,18 @@ export function isoToSlash(iso: string): string {
 /* ---------- Cetak ---------- */
 
 export const print = {
+  currentTarget: null as 'transport' | 'inventaris' | 'daily' | 'checklist' | null,
+
   show(target: 'transport' | 'inventaris' | 'daily' | 'checklist'): void {
+    this.currentTarget = target;
     for (const key of ['transport', 'inventaris', 'daily', 'checklist'] as const) {
       $(`print-${key}`)?.classList.toggle('hidden', key !== target);
     }
   },
 
   hide(): void {
+    this.currentTarget = null;
+    document.getElementById('hbpa-print-page')?.remove();
     for (const key of ['transport', 'inventaris', 'daily', 'checklist'] as const) {
       $(`print-${key}`)?.classList.add('hidden');
     }
@@ -283,6 +288,12 @@ export const print = {
   },
 
   run(): void {
+    document.getElementById('hbpa-print-page')?.remove();
+    const style = document.createElement('style');
+    style.id = 'hbpa-print-page';
+    const portrait = this.currentTarget === 'transport';
+    style.textContent = `@media print { @page { size: A5 ${portrait ? 'portrait' : 'landscape'}; margin: 2mm; } }`;
+    document.head.appendChild(style);
     window.setTimeout(() => window.print(), 150);
   },
 };
