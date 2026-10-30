@@ -242,11 +242,11 @@ export const api = {
   listChecklist: (): Promise<ChecklistItem[]> =>
     read<CkHeader[]>('getCkData').then((docs) =>
       docs.map((doc: CkHeader, index: number) => ({
-        rowId: doc.rowId ?? index,
-        noDok: '',
+        rowId: doc.rowId ?? index + 2,
+        noDok: doc.id ?? '',
         tanggal: doc.tanggal ?? '',
         driver: doc.driver ?? '',
-        kendaraan: doc.tipeMobil ?? '',
+        kendaraan: doc.noPolisi || doc.tipeMobil || '',
         keterangan: doc.keterangan ?? '',
       })) as ChecklistItem[],
     ),

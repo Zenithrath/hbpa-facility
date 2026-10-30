@@ -64,7 +64,7 @@ function renderList(): void {
   tbody.innerHTML = items
     .map((item: ClistItem) => `
       <tr class="cursor-pointer border-b border-surface-100 hover:bg-surface-100"
-        data-action="dr-open" data-id="${item.rowId}">
+        data-action="cl-open" data-id="${item.rowId}">
         <td class="px-4 py-3 text-sm font-bold whitespace-nowrap">
           ${item.noDok || `Form #${item.rowId}`}
         </td>
@@ -91,7 +91,7 @@ function renderList(): void {
 
   cards.innerHTML = items
     .map((item: ClistItem) => `
-      <div class="card p-4" data-action="dr-open" data-id="${item.rowId}">
+      <div class="card p-4" data-action="cl-open" data-id="${item.rowId}">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
             <div class="text-xs font-bold text-primary-700 break-words">
@@ -156,14 +156,15 @@ const CHECKLIST_LIST_PAGE: Page = {
       </div>
     </div>`,
   mount(): void {
-    // Load checklist data from API
-    api.listChecklist().then((items) => {
-      store.checklist = items;
-    });
-    
-    // Initialize list view
-    renderList();
-    
+    // Load checklist data from API, lalu render setelah data siap.
+    api
+      .listChecklist()
+      .then((items) => {
+        store.checklist = items || [];
+        renderList();
+      })
+      .catch(() => toast('Gagal memuat data checklist.', 'error'));
+
     // Bind search input
     (field$('cl-q') ?? $('cl-q'))?.addEventListener('input', debounce(() => renderList(), 250));
     (field$('cl-filter-status') ?? $('cl-filter-status'))?.addEventListener('change', renderList);
