@@ -262,7 +262,7 @@ export async function openDetail(rowId: number): Promise<void> {
   const tabBtns = Array.from(document.querySelectorAll<HTMLElement>('[data-ck-tab]'));
   const editToggle = document.getElementById('ck-edit-toggle');
   const cancelBtn = document.getElementById('ck-cancel-edit');
-  const saveBtn = document.getElementById('ck-save-edit');
+  const saveBtn = $<HTMLButtonElement>('ck-save-edit');
 
   const setTab = (tab: 'preview' | 'edit') => {
     const isPreview = tab === 'preview';
@@ -319,6 +319,15 @@ export async function openDetail(rowId: number): Promise<void> {
 
   // Simpan perubahan lalu kembali ke tab Preview.
   saveBtn?.addEventListener('click', async () => {
+    if (!saveBtn || saveBtn.disabled) return;
+    const originalLabel = saveBtn.innerHTML;
+    saveBtn.disabled = true;
+    saveBtn.innerHTML =
+      '<span class="inline-flex items-center gap-2">' +
+      '<span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>' +
+      '<span>Menyimpan...</span>' +
+      '</span>';
+    saveBtn.classList.add('opacity-75', 'cursor-not-allowed');
     try {
       const body = collectCkEdit(rowId);
       await api.updateCk(body);
@@ -329,6 +338,10 @@ export async function openDetail(rowId: number): Promise<void> {
       setTab('preview');
     } catch (e) {
       toast('Gagal menyimpan: ' + (e as Error).message, 'error');
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = originalLabel;
+      saveBtn.classList.remove('opacity-75', 'cursor-not-allowed');
     }
   });
 }
