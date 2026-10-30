@@ -112,6 +112,7 @@ function dispatch_(action, param) {
     case 'updateDr':          return updateDr_(parseBody_(param));
     case 'getCkData':         return getCkData_();
     case 'saveCk':            return saveCk_(parseBody_(param));
+    case 'updateCk':          return updateCk_(parseBody_(param));
     case 'ckPdf':              return ckPdfForRow_(param.rowId || param.id);
     case 'updateCkStatus':    return updateDocStatus_('ck', parseBody_(param));
 

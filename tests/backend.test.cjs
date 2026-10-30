@@ -403,9 +403,11 @@ delete book['TAB_DAILYREPORT'];
 vm.runInContext('colCache_ = {};', ctx);
 ctx.setupTabsBaru();
 eq('tab TAB_DAILYREPORT dibuat', Boolean(book['TAB_DAILYREPORT']), true);
-eq('tab CK dibuat', Boolean(book['CK']), true);
-eq('tab M_Item dibuat', Boolean(book['M_Item']), true);
-eq('M_Item terisi dari kertas asli', book['M_Item'].grid.length > 50, true);
+const CK_TAB = ctx.CONFIG.tabs.ck;
+const ITEM_TAB = ctx.CONFIG.tabs.mItem;
+eq('tab CK dibuat', Boolean(book[CK_TAB]), true);
+eq('tab M_Item dibuat', Boolean(book[ITEM_TAB]), true);
+eq('M_Item terisi dari kertas asli', book[ITEM_TAB].grid.length > 50, true);
 eq('setup idempoten', /semua tab sudah ada/.test(ctx.setupTabsBaru()), true);
 
 const DR_TAB = 'TAB_DAILYREPORT';
@@ -497,6 +499,7 @@ eq('role admin', masters.role, 'admin');
 eq('driver dikosongkan (input teks)', masters.drivers, []);
 eq('kendaraan dikosongkan (input teks)', masters.kendaraan, []);
 eq('M_Item ke menu form', masters.items.length > 50, true);
+eq('Kaca Depan ikut terbaca dari M_Item', masters.items.some((x) => x.grup === 'Kaca' && x.item === 'Depan'), true);
 eq('IJN dari tab Permintaan', masters.ijn.map((x) => x.ijn), ['001234', '009876']);
 
 console.log('\n--- Checklist Kendaraan ---');
@@ -509,7 +512,7 @@ eq('damage x ngawur', post('saveCk', { tanggal: '18/10/2026', kendaraan: 'KT 810
 
 const sentBase = sentMail.length;
 // Item seperti yang akan dikirim form: daftar penuh dari M_Item tanpa slot tanpa label.
-const masterItems = book['M_Item'].grid.slice(1)
+const masterItems = book[ITEM_TAB].grid.slice(1)
   .filter((r) => String(r[1] || '').trim())
   .map((r) => ({
     grup: r[0], item: r[1],
@@ -532,8 +535,8 @@ eq('plat dinormalkan', ck.data.item.noPolisi, 'KT 8107 YV');
 eq('tipe dari payload', ck.data.item.tipeMobil, 'Avanza');
 eq('tidak ada email saat simpan CK', sentMail.length, sentBase);
 eq('pesan simpan CK menyebut PDF', /PDF siap dicetak/.test(ck.data.message), true);
-eq('items tersimpan di CK (1 baris)', book['CK'].grid.length - 1, 1);
-const ckRow = book['CK'].grid[1];
+eq('items tersimpan di CK (1 baris)', book[CK_TAB].grid.length - 1, 1);
+const ckRow = book[CK_TAB].grid[1];
 const itemsJson = JSON.parse(ckRow[15] || '[]');
 const dmgJson = JSON.parse(ckRow[16] || '[]');
 eq('catatan rusak ikut', (itemsJson.find(function(it){return it.item==='Oli Mesin'})||{}).catatan, 'bocor');
@@ -554,6 +557,22 @@ eq('getCkData terbaru dulu', ckList.map((x) => x.id), ['CK-20261018-002', 'CK-20
 eq('hasRusak terhitung', ckList.map((x) => x.hasRusak), [false, true]);
 eq('items ikut', ckList[1].items.length, masterItems.length);
 eq('damages ikut', ckList[1].damages.length, 1);
+
+console.log('\n--- updateCk ---');
+const ckUpd = post('updateCk', {
+  id: 'CK-20261018-001',
+  rowId: 2,
+  driver: 'Andi Update',
+  kilometer: '63000',
+  items: masterItems,
+  damages: [],
+});
+eq('updateCk sukses', ckUpd.success, true);
+eq('updateCk ubah driver', book[CK_TAB].grid[1][5], 'Andi Update');
+eq('updateCk ubah km', book[CK_TAB].grid[1][6], '63000');
+eq('updateCk items tersimpan', JSON.parse(book[CK_TAB].grid[1][15]).length, masterItems.length);
+eq('updateCk kosongkan damage', JSON.parse(book[CK_TAB].grid[1][16]).length, 0);
+eq('updateCk tanpa id gagal', post('updateCk', { id: 'CK-TIDAK-ADA' }).success, false);
 
 console.log('\n--- template PDF Checklist ---');
 const ckHtml = ctx.ckPdfHtml_({ counter: 'C', tipeMobil: 'Avanza', driver: 'A', tanggal: '18/10/2026', noPolisi: 'KT', kilometer: '1', bbmMasuk: '1/2', bbmKeluar: 'E', keterangan: 'x', diperiksaOleh: 'Budi' }, masterItems, [{ view: 'KIRI', x: 20, y: 30, catatan: '' }]);
