@@ -1748,6 +1748,79 @@ function saveCk_(body) {
 
 
 
+function updateCk_(body) {
+  body = body || {};
+
+  var bbmLevels = ['E', '1/4', '1/2', '3/4', 'F'];
+  if (body.bbmMasuk && bbmLevels.indexOf(body.bbmMasuk) < 0) return fail_('bbm masuk ngawur');
+  if (body.bbmKeluar && bbmLevels.indexOf(body.bbmKeluar) < 0) return fail_('bbm keluar ngawur');
+
+  var views = ['ATAS', 'KIRI', 'KANAN', 'DEPAN', 'BELAKANG'];
+  var damages = body.damages || [];
+  for (var d = 0; d < damages.length; d++) {
+    if (views.indexOf(damages[d].view) < 0) return fail_('damage view ngawur');
+    if (typeof damages[d].x !== 'number' || damages[d].x < 0 || damages[d].x > 100) return fail_('damage x ngawur');
+    if (typeof damages[d].y !== 'number' || damages[d].y < 0 || damages[d].y > 100) return fail_('damage y ngawur');
+  }
+  if (body.kilometer && isNaN(parseInt(body.kilometer, 10))) return fail_('km ngawur');
+
+  var sh = sheet_('ck');
+  var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
+  function colIndex(name) { for (var i = 0; i < head.length; i++) if (normalize_(head[i]) === normalize_(name)) return i + 1; return -1; }
+
+  var id = String(body.id || '').trim();
+  var rowId = Number(body.rowId || 0);
+  var targetRow = -1;
+  var idCol = colIndex('ID_CK');
+  if (id && idCol > 0) {
+    for (var r = 2; r <= sh.getLastRow(); r++) {
+      if (String(sh.getRange(r, idCol).getDisplayValues()[0][0]).trim() === id) { targetRow = r; break; }
+    }
+  }
+  if (targetRow < 0 && rowId >= 2 && rowId <= sh.getLastRow()) targetRow = rowId;
+  if (targetRow < 0) return fail_('Checklist tidak ditemukan.');
+
+  var hasRusak = (body.items || []).some(function (it) { return it.status === 'Rusak'; });
+
+  var itemsJson = JSON.stringify(body.items || []);
+  var damagesJson = JSON.stringify((body.damages || []).map(function (d) {
+    return { view: d.view, x: d.x, y: d.y, catatan: d.catatan || '', linkGambar: d.linkGambar || '' };
+  }));
+
+  function put(name, value) { var idx = colIndex(name); if (idx > 0) sh.getRange(targetRow, idx).setValue(value); }
+
+  if (body.tanggal != null) put('Tanggal', body.tanggal);
+  if (body.counter != null) put('Counter', body.counter);
+  if (body.tipeMobil != null) put('Tipe_Mobil', body.tipeMobil);
+  if (body.kendaraan != null) put('No_Polisi', String(body.kendaraan).trim().toUpperCase());
+  if (body.driver != null) put('Driver', body.driver);
+  if (body.kilometer != null) put('Kilometer', body.kilometer);
+  if (body.bbmMasuk != null) put('BBM_Masuk', body.bbmMasuk);
+  if (body.bbmKeluar != null) put('BBM_Keluar', body.bbmKeluar);
+  if (body.keterangan != null) put('Keterangan', body.keterangan);
+  if (body.diperiksaOleh != null) put('Diperiksa_Oleh', body.diperiksaOleh);
+  if (body.status != null) put('Status', body.status);
+  if (body.items != null) put('Items_JSON', itemsJson);
+  if (body.damages != null) put('Damages_JSON', damagesJson);
+  if (body.items != null) put('Has_Rusak', hasRusak);
+
+  var currentId = id || String(sh.getRange(targetRow, idCol).getDisplayValues()[0][0]).trim();
+
+  return ok_({
+    item: {
+      rowId: targetRow,
+      id: currentId,
+      tanggal: body.tanggal != null ? body.tanggal : String(sh.getRange(targetRow, colIndex('Tanggal')).getDisplayValues()[0][0]),
+      noPolisi: body.kendaraan != null ? String(body.kendaraan).trim().toUpperCase() : String(sh.getRange(targetRow, colIndex('No_Polisi')).getDisplayValues()[0][0]),
+      tipeMobil: body.tipeMobil != null ? body.tipeMobil : String(sh.getRange(targetRow, colIndex('Tipe_Mobil')).getDisplayValues()[0][0]),
+      status: body.status != null ? body.status : String(sh.getRange(targetRow, colIndex('Status')).getDisplayValues()[0][0]),
+      linkPdf: ''
+    },
+    hasRusak: hasRusak,
+    message: 'Checklist diperbarui.'
+  });
+}
+
 /* ---------- End Daily Report / Checklist Functions ---------- */
 
 

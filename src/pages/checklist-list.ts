@@ -228,11 +228,80 @@ export async function openDetail(rowId: number): Promise<void> {
 
   drawer.open({
       title: 'Detail Checklist Kendaraan',
-      body: '<div style="transform:scale(0.64);transform-origin:top left;width:595.28pt;height:539pt;overflow:auto">' +
-            renderChecklistPaper(d, item) +
-            '</div>',
-      footer: '<button class="btn-primary" data-action="cl-print" data-id="' + rowId + '">Cetak</button>',
+      body: `
+        <div class="mb-3 flex gap-2">
+          <button type="button" class="btn-slate" data-ck-tab="preview">Preview</button>
+          <button type="button" class="btn-slate" data-ck-tab="edit">Edit</button>
+        </div>
+        <div id="ck-preview">${renderChecklistPaper(d, item)}</div>
+        <div id="ck-edit" class="hidden space-y-4">${renderCkEditForm(d, item)}</div>
+      `,
+      footer: `
+        <button class="btn-slate" data-action="cl-print" data-id="${rowId}">Cetak</button>
+        <button class="btn-primary" id="ck-save-edit" type="button">Simpan</button>
+      `,
   });
+
+  // Tab switching
+  const previewEl = must('ck-preview');
+  const editEl = must('ck-edit');
+  document.querySelectorAll('[data-ck-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tab = (btn as HTMLElement).getAttribute('data-ck-tab');
+      if (tab === 'preview') {
+        previewEl.classList.remove('hidden');
+        editEl.classList.add('hidden');
+      } else {
+        previewEl.classList.add('hidden');
+        editEl.classList.remove('hidden');
+      }
+    });
+  });
+
+  // Damage add/remove
+  const addDmg = document.getElementById('ce-add-damage');
+  if (addDmg) {
+    addDmg.addEventListener('click', () => {
+      const container = document.getElementById('ce-damages');
+      if (!container) return;
+      // reuse renderDamageRow by inline
+      const views = ['ATAS', 'KIRI', 'KANAN', 'DEPAN', 'BELAKANG'];
+      const vOpts = views.map((v) => '<option value="' + v + '">' + v + '</option>').join('');
+      const row = document.createElement('div');
+      row.className = 'ce-damage-row flex items-center gap-2 py-1';
+      row.innerHTML =
+        '<select class="field w-24 text-xs ce-dmg-view">' + vOpts + '</select>' +
+        '<input class="field w-16 text-xs ce-dmg-x" type="number" min="0" max="100" value="0">' +
+        '<input class="field w-16 text-xs ce-dmg-y" type="number" min="0" max="100" value="0">' +
+        '<input class="field flex-1 text-xs ce-dmg-catatan" placeholder="catatan" value="">' +
+        '<button type="button" class="btn-slate text-xs ce-dmg-remove">Hapus</button>';
+      container.appendChild(row);
+      row.querySelector('.ce-dmg-remove')?.addEventListener('click', () => row.remove());
+    });
+  }
+  document.querySelectorAll('.ce-dmg-remove').forEach((btn) => {
+    btn.addEventListener('click', () => (btn as HTMLElement).closest('.ce-damage-row')?.remove());
+  });
+
+  // Save edit
+  const saveBtn = document.getElementById('ck-save-edit');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      try {
+        const body = collectCkEdit(rowId);
+        await api.updateCk(body);
+        toast('Checklist diperbarui.', 'info');
+        // refresh docs + preview
+        ckDocs = await api.getCkDocuments();
+        const newDoc = ckDocs.find((x: CkHeader) => x.rowId === rowId);
+        previewEl.innerHTML = renderChecklistPaper(newDoc, item);
+        previewEl.classList.remove('hidden');
+        editEl.classList.add('hidden');
+      } catch (e) {
+        toast('Gagal menyimpan: ' + (e as Error).message, 'error');
+      }
+    });
+  }
 }
 
 /** Cetak checklist: minta tanda tangan dulu lewat modal bersama */
@@ -258,4 +327,117 @@ function printSavedChecklist(doc: CkHeader | undefined, item: ClistItem | undefi
   const area = document.getElementById('print-checklist');
   if (area) area.innerHTML = renderChecklistPaper(doc, item, sigs);
   print.run();
+}
+
+/** Render form edit untuk checklist (header + item + kerusakan). */
+function renderCkEditForm(doc: CkHeader | undefined, item: ClistItem | undefined): string {
+  const d = doc;
+  const esc2 = (v: unknown) => String(v ?? '');
+  const levels = ['E', '1/4', '1/2', '3/4', 'F'];
+  const statuses = ['Baik', 'Rusak', 'Tidak Ada'];
+  const lvlOpts = (cur: string) => levels.map((l) => '<option value="' + l + '"' + (l === cur ? ' selected' : '') + '>' + l + '</option>').join('');
+  const stOpts = (cur: string) => statuses.map((st) => '<option value="' + st + '"' + (st === cur ? ' selected' : '') + '>' + st + '</option>').join('');
+
+  let html = '';
+  html += '<div class="grid grid-cols-2 gap-3">';
+  html += '<div><label class="field-label">No Dokumen</label><input class="field" id="ce-id" value="' + esc2(d?.id || item?.noDok || '') + '" readonly></div>';
+  html += '<div><label class="field-label">Tanggal</label><input class="field" id="ce-tanggal" value="' + esc2(d?.tanggal || item?.tanggal || '') + '"></div>';
+  html += '<div><label class="field-label">Counter</label><input class="field" id="ce-counter" value="' + esc2(d?.counter || '') + '"></div>';
+  html += '<div><label class="field-label">Type Mobil</label><input class="field" id="ce-tipe" value="' + esc2(d?.tipeMobil || '') + '"></div>';
+  html += '<div><label class="field-label">Driver</label><input class="field" id="ce-driver" value="' + esc2(d?.driver || item?.driver || '') + '"></div>';
+  html += '<div><label class="field-label">Kendaraan</label><input class="field" id="ce-kendaraan" value="' + esc2(d?.noPolisi || item?.kendaraan || '') + '"></div>';
+  html += '<div><label class="field-label">Kilometer</label><input class="field" id="ce-km" value="' + esc2(d?.kilometer || '') + '"></div>';
+  html += '<div><label class="field-label">BBM Masuk</label><select class="field" id="ce-bbmMasuk">' + lvlOpts(d?.bbmMasuk || '') + '</select></div>';
+  html += '<div><label class="field-label">BBM Keluar</label><select class="field" id="ce-bbmKeluar">' + lvlOpts(d?.bbmKeluar || '') + '</select></div>';
+  html += '<div><label class="field-label">Status</label><input class="field" id="ce-status" value="' + esc2(d?.status || '') + '"></div>';
+  html += '<div class="sm:col-span-2"><label class="field-label">Diperiksa Oleh</label><input class="field" id="ce-diperiksa" value="' + esc2(d?.diperiksaOleh || '') + '"></div>';
+  html += '<div class="sm:col-span-2"><label class="field-label">Keterangan</label><textarea class="field" id="ce-keterangan" rows="2">' + esc2(d?.keterangan || item?.keterangan || '') + '</textarea></div>';
+  html += '</div>';
+
+  // Items
+  html += '<div class="mt-3"><div class="text-xs font-bold text-surface-500 uppercase mb-2">Item Pemeriksaan</div>';
+  const groups: Record<string, any[]> = {};
+  const order: string[] = [];
+  for (const it of d?.items || []) {
+    const g = it.grup;
+    if (!groups[g]) { groups[g] = []; order.push(g); }
+    groups[g]!.push(it);
+  }
+  if (!order.length) order.push('Kaca');
+  for (const g of order) {
+    html += '<div class="rounded-lg border border-surface-200 p-3 mb-2">';
+    html += '<div class="text-xs font-bold text-surface-500 uppercase mb-2">' + esc2(g) + '</div>';
+    for (const it of groups[g] || []) {
+      html += '<div class="flex items-center gap-2 py-1 border-b border-surface-100 last:border-0">';
+      html += '<span class="text-sm flex-1">' + esc2(it.item) + '</span>';
+      html += '<select class="field w-28 text-xs ce-item-status" data-grup="' + esc2(it.grup) + '" data-item="' + esc2(it.item) + '">' + stOpts(it.status) + '</select>';
+      html += '<input class="field w-32 text-xs ce-item-catatan" data-grup="' + esc2(it.grup) + '" data-item="' + esc2(it.item) + '" placeholder="catatan" value="' + esc2(it.catatan || '') + '">';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // Damages
+  html += '<div class="mt-3"><div class="text-xs font-bold text-surface-500 uppercase mb-2">Tanda Kerusakan</div>';
+  html += '<div id="ce-damages">';
+  for (const m of d?.damages || []) {
+    html += renderDamageRow(m);
+  }
+  html += '</div>';
+  html += '<button type="button" class="btn-slate mt-2" id="ce-add-damage">+ Tambah Kerusakan</button>';
+  html += '</div>';
+
+  return html;
+}
+
+function renderDamageRow(m: { view: string; x: number; y: number; catatan?: string }): string {
+  const views = ['ATAS', 'KIRI', 'KANAN', 'DEPAN', 'BELAKANG'];
+  const vOpts = views.map((v) => '<option value="' + v + '"' + (v === (m.view || '').toUpperCase() ? ' selected' : '') + '>' + v + '</option>').join('');
+  return '<div class="ce-damage-row flex items-center gap-2 py-1">' +
+    '<select class="field w-24 text-xs ce-dmg-view">' + vOpts + '</select>' +
+    '<input class="field w-16 text-xs ce-dmg-x" type="number" min="0" max="100" value="' + (m.x ?? 0) + '">' +
+    '<input class="field w-16 text-xs ce-dmg-y" type="number" min="0" max="100" value="' + (m.y ?? 0) + '">' +
+    '<input class="field flex-1 text-xs ce-dmg-catatan" placeholder="catatan" value="' + (m.catatan || '') + '">' +
+    '<button type="button" class="btn-slate text-xs ce-dmg-remove">Hapus</button>' +
+    '</div>';
+}
+
+function collectCkEdit(rowId: number): any {
+  const g = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value ?? '';
+  const items: { grup: string; item: string; status: string; catatan: string }[] = [];
+  document.querySelectorAll('.ce-item-status').forEach((el) => {
+    const grup = (el as HTMLElement).getAttribute('data-grup') || '';
+    const item = (el as HTMLElement).getAttribute('data-item') || '';
+    const status = (el as HTMLSelectElement).value;
+    const catInput = document.querySelector('.ce-item-catatan[data-grup="' + grup + '"][data-item="' + item + '"]') as HTMLInputElement | null;
+    items.push({ grup, item, status, catatan: catInput?.value ?? '' });
+  });
+
+  const damages: { view: string; x: number; y: number; catatan: string }[] = [];
+  document.querySelectorAll('.ce-damage-row').forEach((row) => {
+    const view = (row.querySelector('.ce-dmg-view') as HTMLSelectElement).value;
+    const x = Number((row.querySelector('.ce-dmg-x') as HTMLInputElement).value);
+    const y = Number((row.querySelector('.ce-dmg-y') as HTMLInputElement).value);
+    const catatan = (row.querySelector('.ce-dmg-catatan') as HTMLInputElement).value;
+    damages.push({ view, x, y, catatan });
+  });
+
+  return {
+    id: g('ce-id'),
+    rowId: rowId,
+    tanggal: g('ce-tanggal'),
+    counter: g('ce-counter'),
+    tipeMobil: g('ce-tipe'),
+    driver: g('ce-driver'),
+    kendaraan: g('ce-kendaraan'),
+    kilometer: g('ce-km'),
+    bbmMasuk: g('ce-bbmMasuk'),
+    bbmKeluar: g('ce-bbmKeluar'),
+    keterangan: g('ce-keterangan'),
+    diperiksaOleh: g('ce-diperiksa'),
+    status: g('ce-status'),
+    items: items,
+    damages: damages,
+  };
 }

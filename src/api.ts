@@ -283,6 +283,27 @@ export const api = {
     rows?: { start: string; finish: string; nopol?: string; ijn?: string; namaUser?: string; km?: string; solar?: string; uraian?: string }[];
   }) => write('updateDr', body).then(() => invalidate('getDrData')),
 
+  updateCk: (body: {
+    id?: string;
+    rowId?: number;
+    tanggal?: string;
+    counter?: string;
+    tipeMobil?: string;
+    kendaraan?: string;
+    driver?: string;
+    kilometer?: string;
+    bbmMasuk?: string;
+    bbmKeluar?: string;
+    keterangan?: string;
+    diperiksaOleh?: string;
+    status?: string;
+    items?: { grup: string; item: string; status: string; catatan: string }[];
+    damages?: { view: string; x: number; y: number; catatan?: string }[];
+  }) => write<CkSaveResult>('updateCk', body, CONFIG.MAX_DOC_BYTES).then((result) => {
+      invalidate('getCkData');
+      return result;
+    }),
+
   updateCkStatus: (id: string, status: string) =>
     writeParams('updateCkStatus', { id, status }).then(() => invalidate('getCkData')),
 };
