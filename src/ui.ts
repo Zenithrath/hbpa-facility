@@ -255,7 +255,7 @@ export function slashToIso(value: unknown): string {
 export function isoToSlash(iso: string): string {
   const parts = iso.split('-');
   if (parts.length !== 3) return iso;
-  return `${Number(parts[2])}/${Number(parts[1])}/${parts[0]}`;
+  return `${pad(Number(parts[2]))}/${pad(Number(parts[1]))}/${parts[0]}`;
 }
 
 /* ---------- Cetak ---------- */

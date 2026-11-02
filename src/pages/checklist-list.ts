@@ -4,8 +4,16 @@
  */
 import { store } from '../store';
 import { api } from '../api';
-import type { CkHeader } from '../schema';
+import type { CkDamage, CkHeader } from '../schema';
 import { CK_ITEMS, renderChecklistPaper } from './checklist-paper';
+import {
+  DAMAGE_VIEWS,
+  VIEW_DIMENSIONS,
+  bindDamageCanvas,
+  preloadDamageImages,
+  type DamageCanvasBinding,
+  type DamageMark,
+} from './checklist-canvas';
 import {
   $,
   askSignature,
@@ -40,6 +48,18 @@ interface ClistItem {
 }
 
 let ckDocs: CkHeader[] = [];
+
+/** State editor kerusakan di drawer: daftar penanda + pilihan aktif. */
+let editDamages: CkDamage[] = [];
+let editPending: DamageMark | null = null;
+let editSelected: number | null = null;
+let editCanvasBindings: DamageCanvasBinding[] = [];
+
+/** Dokumen yang sedang diedit, supaya preview/cetak ikut perubahan yang belum disimpan. */
+let activeEditRowId: number | null = null;
+let activeEditDoc: CkHeader | null = null;
+let editDirty = false;
+let refreshEditPreview: (() => void) | null = null;
 
 async function ensureCkDocs(): Promise<CkHeader[]> {
   if (ckDocs.length) return ckDocs;
@@ -216,10 +236,25 @@ export async function openDetail(rowId: number): Promise<void> {
 
   const d = doc;
 
+  editDamages = (d?.damages ?? []).map((m) => ({ ...m }));
+  editPending = null;
+  editSelected = null;
+  editDirty = false;
+  activeEditRowId = rowId;
+  activeEditDoc = d
+    ? { ...d, items: d.items.map((it) => ({ ...it })), damages: editDamages.map((m) => ({ ...m })) }
+    : null;
+
   const bodyEl = must('drawer-body');
   const prevOverflow = bodyEl.style.overflow;
   const originalClose = drawer.close;
   drawer.close = () => {
+    editCanvasBindings.forEach((binding) => binding.destroy());
+    editCanvasBindings = [];
+    activeEditRowId = null;
+    activeEditDoc = null;
+    editDirty = false;
+    refreshEditPreview = null;
     bodyEl.style.overflow = prevOverflow;
     originalClose();
     drawer.close = originalClose;
@@ -259,6 +294,9 @@ export async function openDetail(rowId: number): Promise<void> {
   // Tab switching: preview = kertas (scroll kecil di dalam), edit = form (body scroll).
   const previewEl = must('ck-preview');
   const editEl = must('ck-edit');
+  refreshEditPreview = () => {
+    if (activeEditDoc) previewEl.innerHTML = paperPreview(activeEditDoc, item);
+  };
   const tabBtns = Array.from(document.querySelectorAll<HTMLElement>('[data-ck-tab]'));
   const editToggle = document.getElementById('ck-edit-toggle');
   const cancelBtn = document.getElementById('ck-cancel-edit');
@@ -292,30 +330,7 @@ export async function openDetail(rowId: number): Promise<void> {
   editToggle?.addEventListener('click', () => setTab('edit'));
   cancelBtn?.addEventListener('click', () => setTab('preview'));
 
-  // Damage add/remove
-  const addDmg = document.getElementById('ce-add-damage');
-  if (addDmg) {
-    addDmg.addEventListener('click', () => {
-      const container = document.getElementById('ce-damages');
-      if (!container) return;
-      // reuse renderDamageRow by inline
-      const views = ['ATAS', 'KIRI', 'KANAN', 'DEPAN', 'BELAKANG'];
-      const vOpts = views.map((v) => '<option value="' + v + '">' + v + '</option>').join('');
-      const row = document.createElement('div');
-      row.className = 'ce-damage-row flex items-center gap-2 py-1';
-      row.innerHTML =
-        '<select class="field w-24 text-xs ce-dmg-view">' + vOpts + '</select>' +
-        '<input class="field w-16 text-xs ce-dmg-x" type="number" min="0" max="100" value="0">' +
-        '<input class="field w-16 text-xs ce-dmg-y" type="number" min="0" max="100" value="0">' +
-        '<input class="field flex-1 text-xs ce-dmg-catatan" placeholder="catatan" value="">' +
-        '<button type="button" class="btn-slate text-xs ce-dmg-remove">Hapus</button>';
-      container.appendChild(row);
-      row.querySelector('.ce-dmg-remove')?.addEventListener('click', () => row.remove());
-    });
-  }
-  document.querySelectorAll('.ce-dmg-remove').forEach((btn) => {
-    btn.addEventListener('click', () => (btn as HTMLElement).closest('.ce-damage-row')?.remove());
-  });
+  setupEditDamageEditor();
 
   // Simpan perubahan lalu kembali ke tab Preview.
   saveBtn?.addEventListener('click', async () => {
@@ -334,6 +349,16 @@ export async function openDetail(rowId: number): Promise<void> {
       toast('Checklist diperbarui.', 'info');
       ckDocs = await api.getCkDocuments();
       const newDoc = ckDocs.find((x: CkHeader) => x.rowId === rowId);
+      if (newDoc) {
+        editDamages = (newDoc.damages ?? []).map((m) => ({ ...m }));
+        activeEditDoc = {
+          ...newDoc,
+          items: newDoc.items.map((it) => ({ ...it })),
+          damages: editDamages.map((m) => ({ ...m })),
+        };
+      }
+      editDirty = false;
+      updateEditDirtyIndicator();
       previewEl.innerHTML = paperPreview(newDoc, item);
       setTab('preview');
     } catch (e) {
@@ -349,7 +374,10 @@ export async function openDetail(rowId: number): Promise<void> {
 /** Cetak checklist: minta tanda tangan dulu lewat modal bersama */
 export async function printChecklist(rowId: number): Promise<void> {
   const docs = await ensureCkDocs();
-  const doc = docs.find((d: CkHeader) => d.rowId === rowId);
+  // Kalau drawer edit untuk baris ini masih terbuka, pakai state live supaya
+  // penanda yang baru dihapus/dipindah ikut tercetak.
+  const liveDoc = activeEditRowId === rowId ? activeEditDoc : null;
+  const doc = liveDoc ?? docs.find((d: CkHeader) => d.rowId === rowId);
   const item = store.checklist.find((i: ClistItem) => i.rowId === rowId);
   if (!doc && !item) {
     toast('Data tidak ditemukan.', 'error');
@@ -434,28 +462,228 @@ function renderCkEditForm(doc: CkHeader | undefined, item: ClistItem | undefined
   html += '</div>';
 
   // Damages
-  html += '<div class="mt-3"><div class="text-xs font-bold text-surface-500 uppercase mb-2">Tanda Kerusakan</div>';
-  html += '<div id="ce-damages">';
-  for (const m of d?.damages || []) {
-    html += renderDamageRow(m);
+  html += '<div class="mt-3">';
+  html += '<div class="text-xs font-bold text-surface-500 uppercase mb-1">Tanda Kerusakan</div>';
+  html += '<p class="text-[11px] text-surface-400">Klik lokasi di gambar kendaraan untuk menandai. Klik penanda di daftar untuk memindahkannya.</p>';
+  html += '<div class="mt-2 grid gap-2 sm:grid-cols-2">';
+  for (const view of DAMAGE_VIEWS) {
+    html += renderDamageCanvas(view);
   }
   html += '</div>';
-  html += '<button type="button" class="btn-slate mt-2" id="ce-add-damage">+ Tambah Kerusakan</button>';
+  html += '<div class="mt-2 flex flex-wrap items-center gap-2">';
+  html += '<input id="ce-dmg-catatan" type="text" class="field w-auto flex-1 py-1.5 text-xs" placeholder="Catatan kerusakan (opsional)">';
+  html += '<button type="button" class="btn-slate" id="ce-catat-damage">Catat penanda</button>';
+  html += '<span id="ce-dmg-hint" class="text-[11px] text-surface-400">Klik gambar untuk memilih lokasi.</span>';
+  html += '<span id="ce-dirty" class="hidden text-[11px] font-semibold text-amber-600">Perubahan belum disimpan.</span>';
+  html += '</div>';
+  html += '<div class="mt-2 text-sm">';
+  html += '<div>Penanda tercatat: <b id="ce-dmg-count">0</b></div>';
+  html += '<ul id="ce-dmg-list" class="mt-1 space-y-1"></ul>';
+  html += '</div>';
   html += '</div>';
 
   return html;
 }
 
-function renderDamageRow(m: { view: string; x: number; y: number; catatan?: string }): string {
-  const views = ['ATAS', 'KIRI', 'KANAN', 'DEPAN', 'BELAKANG'];
-  const vOpts = views.map((v) => '<option value="' + v + '"' + (v === (m.view || '').toUpperCase() ? ' selected' : '') + '>' + v + '</option>').join('');
-  return '<div class="ce-damage-row flex items-center gap-2 py-1">' +
-    '<select class="field w-24 text-xs ce-dmg-view">' + vOpts + '</select>' +
-    '<input class="field w-16 text-xs ce-dmg-x" type="number" min="0" max="100" value="' + (m.x ?? 0) + '">' +
-    '<input class="field w-16 text-xs ce-dmg-y" type="number" min="0" max="100" value="' + (m.y ?? 0) + '">' +
-    '<input class="field flex-1 text-xs ce-dmg-catatan" placeholder="catatan" value="' + (m.catatan || '') + '">' +
-    '<button type="button" class="btn-slate text-xs ce-dmg-remove">Hapus</button>' +
+function renderDamageCanvas(view: string): string {
+  const size = VIEW_DIMENSIONS[view] ?? { w: 480, h: 320 };
+  return '<div class="text-center">' +
+    '<div class="flex h-40 items-center justify-center rounded-lg border border-surface-200 bg-white p-1.5">' +
+    '<canvas id="ce-cv-' + view + '" width="' + size.w + '" height="' + size.h + '" data-view="' + view + '"' +
+    ' class="block h-auto w-auto max-h-full max-w-full cursor-crosshair rounded"></canvas>' +
+    '</div>' +
+    '<div class="mt-1 text-[11px] font-semibold tracking-wide text-surface-600">' + view + '</div>' +
     '</div>';
+}
+
+/** Tampilkan penanda "perubahan belum disimpan" di tab Edit. */
+function updateEditDirtyIndicator(): void {
+  const el = document.getElementById('ce-dirty');
+  if (!el) return;
+  el.classList.toggle('hidden', !editDirty);
+}
+
+/**
+ * Salin penanda dari editor ke dokumen live supaya preview dan cetak
+ * memakai perubahan yang belum disimpan (mis. penanda yang baru dihapus).
+ */
+function syncDamagePreview(): void {
+  if (!activeEditDoc) return;
+  activeEditDoc = { ...activeEditDoc, damages: editDamages.map((m) => ({ ...m })) };
+  editDirty = true;
+  updateEditDirtyIndicator();
+  refreshEditPreview?.();
+}
+
+function paintEditDamages(): void {
+  editCanvasBindings.forEach((binding) => binding.paint());
+}
+
+function renderEditDamageHint(): void {
+  const hint = document.getElementById('ce-dmg-hint');
+  if (!hint) return;
+
+  if (editSelected !== null) {
+    const mark = editDamages[editSelected];
+    hint.textContent = mark
+      ? `Penanda ${mark.view} dipilih — klik gambar untuk memindahkan.`
+      : 'Klik gambar untuk memilih lokasi.';
+    hint.className = 'text-[11px] font-semibold text-primary-700';
+    return;
+  }
+
+  if (editPending) {
+    hint.textContent = `Lokasi terpilih: ${editPending.view} (${editPending.x}%, ${editPending.y}%)`;
+    hint.className = 'text-[11px] font-semibold text-primary-700';
+    return;
+  }
+
+  hint.textContent = 'Klik gambar untuk memilih lokasi.';
+  hint.className = 'text-[11px] text-surface-400';
+}
+
+function renderEditDamages(): void {
+  const count = document.getElementById('ce-dmg-count');
+  if (count) count.textContent = String(editDamages.length);
+
+  const list = document.getElementById('ce-dmg-list');
+  if (!list) return;
+  if (!editDamages.length) {
+    list.innerHTML = '<li class="text-[11px] text-surface-400">Belum ada penanda.</li>';
+    return;
+  }
+
+  list.innerHTML = editDamages
+    .map((mark, index) => {
+      const active = editSelected === index;
+      const rowClass = active
+        ? 'border-primary-500 bg-primary-50'
+        : 'border-surface-200 bg-surface-50';
+      return '<li class="rounded-lg border ' + rowClass + ' px-3 py-1.5 text-xs">' +
+        '<div class="flex items-center justify-between gap-2">' +
+        '<button type="button" class="flex-1 text-left" data-ce-pick="' + index + '">' +
+        esc(mark.view) + ' (' + esc(mark.x) + '%, ' + esc(mark.y) + '%)' +
+        '</button>' +
+        '<button type="button" class="btn-slate text-red-600 text-xs" data-ce-del="' + index + '">Hapus</button>' +
+        '</div>' +
+        '<input type="text" class="field mt-1 w-full px-2 py-1 text-[11px]" data-ce-note="' + index + '"' +
+        ' placeholder="Catatan kerusakan" value="' + esc(mark.catatan ?? '') + '">' +
+        '</li>';
+    })
+    .join('');
+}
+
+function selectEditDamage(index: number): void {
+  if (editSelected === index) {
+    editSelected = null;
+    editPending = null;
+  } else {
+    const mark = editDamages[index];
+    if (!mark) return;
+    editSelected = index;
+    editPending = { view: mark.view, x: mark.x, y: mark.y };
+  }
+  renderEditDamages();
+  renderEditDamageHint();
+  paintEditDamages();
+}
+
+function deleteEditDamage(index: number): void {
+  if (index < 0 || index >= editDamages.length) return;
+  editDamages.splice(index, 1);
+
+  if (editSelected === index) {
+    editSelected = null;
+    editPending = null;
+  } else if (editSelected !== null && editSelected > index) {
+    editSelected -= 1;
+  }
+
+  renderEditDamages();
+  renderEditDamageHint();
+  paintEditDamages();
+  syncDamagePreview();
+}
+
+function setupEditDamageEditor(): void {
+  editCanvasBindings.forEach((binding) => binding.destroy());
+  editCanvasBindings = [];
+
+  for (const view of DAMAGE_VIEWS) {
+    const canvas = document.getElementById('ce-cv-' + view) as HTMLCanvasElement | null;
+    if (!canvas) continue;
+    editCanvasBindings.push(
+      bindDamageCanvas(canvas, view, () => ({ marks: editDamages, pending: editPending }), (mark) => {
+        if (editSelected !== null) {
+          const current = editDamages[editSelected];
+          if (current) {
+            editDamages[editSelected] = { ...current, view: mark.view, x: mark.x, y: mark.y };
+          }
+          editSelected = null;
+          editPending = null;
+          syncDamagePreview();
+        } else {
+          editPending = { ...mark };
+        }
+        renderEditDamages();
+        renderEditDamageHint();
+        paintEditDamages();
+      }),
+    );
+  }
+
+  const list = document.getElementById('ce-dmg-list');
+  if (list) {
+    list.onclick = (event) => {
+      const target = event.target as HTMLElement | null;
+      const remove = target?.closest<HTMLElement>('[data-ce-del]');
+      if (remove) {
+        deleteEditDamage(Number(remove.dataset.ceDel));
+        return;
+      }
+      const pick = target?.closest<HTMLElement>('[data-ce-pick]');
+      if (pick) selectEditDamage(Number(pick.dataset.cePick));
+    };
+    list.oninput = (event) => {
+      const target = event.target as HTMLElement | null;
+      const note = target?.closest<HTMLInputElement>('[data-ce-note]');
+      if (!note) return;
+      const mark = editDamages[Number(note.dataset.ceNote)];
+      if (mark) {
+        mark.catatan = note.value;
+        editDirty = true;
+        updateEditDirtyIndicator();
+      }
+    };
+    list.onchange = (event) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-ce-note]')) syncDamagePreview();
+    };
+  }
+
+  document.getElementById('ce-catat-damage')?.addEventListener('click', () => {
+    if (editSelected !== null) {
+      toast('Klik gambar untuk memindahkan penanda yang dipilih, atau klik penanda lagi untuk batal.', 'error');
+      return;
+    }
+    if (!editPending) {
+      toast('Klik dulu lokasi kerusakan di gambar kendaraan.', 'error');
+      return;
+    }
+    const note = document.getElementById('ce-dmg-catatan') as HTMLInputElement | null;
+    editDamages.push({ ...editPending, catatan: note?.value.trim() ?? '' });
+    editPending = null;
+    editSelected = null;
+    if (note) note.value = '';
+    renderEditDamages();
+    renderEditDamageHint();
+    paintEditDamages();
+    syncDamagePreview();
+  });
+
+  preloadDamageImages();
+  renderEditDamages();
+  renderEditDamageHint();
 }
 
 function collectCkEdit(rowId: number): any {
@@ -469,14 +697,12 @@ function collectCkEdit(rowId: number): any {
     items.push({ grup, item, status, catatan: catInput?.value ?? '' });
   });
 
-  const damages: { view: string; x: number; y: number; catatan: string }[] = [];
-  document.querySelectorAll('.ce-damage-row').forEach((row) => {
-    const view = (row.querySelector('.ce-dmg-view') as HTMLSelectElement).value;
-    const x = Number((row.querySelector('.ce-dmg-x') as HTMLInputElement).value);
-    const y = Number((row.querySelector('.ce-dmg-y') as HTMLInputElement).value);
-    const catatan = (row.querySelector('.ce-dmg-catatan') as HTMLInputElement).value;
-    damages.push({ view, x, y, catatan });
-  });
+  const damages = editDamages.map((mark) => ({
+    view: mark.view,
+    x: mark.x,
+    y: mark.y,
+    catatan: mark.catatan ?? '',
+  }));
 
   return {
     id: g('ce-id'),

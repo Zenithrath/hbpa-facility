@@ -12,15 +12,14 @@ import type { CkDamage, CkItem, CkSaveResult, DrCkMaster } from "../schema";
 import { $, esc, field$, isoToSlash, print, type Signatures, toast, todayISO, icon, orDash, must, emptyRow } from "../ui";
 import { message } from "./transport";
 import { store } from "../store";
+import {
+  DAMAGE_VIEWS,
+  bindDamageCanvas,
+  preloadDamageImages,
+  type DamageCanvasBinding,
+} from "./checklist-canvas";
 
-/** Ukuran bitmap tiap tampilan, mengikuti rasio gambar aslinya. */
-export const VIEW_DIMENSIONS: Record<string, { w: number; h: number }> = {
-  ATAS: { w: 300, h: 578 },
-  KIRI: { w: 480, h: 320 },
-  KANAN: { w: 480, h: 320 },
-  DEPAN: { w: 480, h: 320 },
-  BELAKANG: { w: 480, h: 320 },
-};
+export { VIEW_DIMENSIONS } from "./checklist-canvas";
 
 /** Slot kosong yang tetap digambar seperti di kertas asli. */
 const SLOT_ROWS: Record<string, number> = {
@@ -91,11 +90,6 @@ const DEFAULT_CK_ITEMS: { grup: string; item: string; urutan: string }[] = [
 
 function canvasFor(view: string): HTMLCanvasElement | null {
   return $<HTMLCanvasElement>(`ck-cv-${view}`);
-}
-
-
-function contextFor(view: string): CanvasRenderingContext2D | null {
-  return canvasFor(view)?.getContext("2d") ?? null;
 }
 
 
@@ -258,110 +252,10 @@ function paintGauge(id: string): void {
 
 /* ---------- Gambar mobil + tanda kerusakan ---------- */
 
-/**
- * Gambar kendaraan memakai WebP hasil render, bukan SVG trace aslinya.
- * Lima SVG itu totalnya ~4 MB dan lama di-decode; versi WebP ini ~330 KB
- * sehingga halaman langsung tampil.
- */
-const CAR_SRC: Record<string, string> = {
-  ATAS: "./ck-atas.webp",
-  KIRI: "./ck-kiri.webp",
-  KANAN: "./ck-kanan.webp",
-  DEPAN: "./ck-depan.webp",
-  BELAKANG: "./ck-belakang.webp",
-};
-
-const carImages: Record<string, HTMLImageElement> = {};
-const carLoading = new Set<string>();
-
-function carImageFor(view: string): HTMLImageElement | null {
-  const src = CAR_SRC[view];
-  if (!src) return null;
-
-  let img = carImages[view];
-  if (!img) {
-    img = new Image();
-    img.decoding = "async";
-    img.src = src;
-    carImages[view] = img;
-  }
-  return img;
-}
-
-function drawCar(view: string, withMarks: boolean): void {
-  const c = contextFor(view);
-  const img = carImageFor(view);
-  if (!c || !img) return;
-  const W = c.canvas.width;
-  const H = c.canvas.height;
-
-  // Kanvas dibiarkan transparan; tidak ada latar di belakang gambar mobil.
-  c.clearRect(0, 0, W, H);
-
-  if (!img.complete || img.naturalWidth === 0) {
-    if (!carLoading.has(view)) {
-      carLoading.add(view);
-      img.addEventListener(
-        "load",
-        () => {
-          carLoading.delete(view);
-          drawCar(view, true);
-        },
-        { once: true },
-      );
-    }
-    return;
-  }
-
-  const iw = img.naturalWidth;
-  const ih = img.naturalHeight;
-  const scale = Math.min(W / iw, H / ih) * 0.94;
-  const dw = iw * scale;
-  const dh = ih * scale;
-  c.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
-
-  if (withMarks) drawMarks(view);
-}
-
-function drawMarks(view: string): void {
-  const c = contextFor(view);
-  if (!c) return;
-  const W = c.canvas.width;
-  const H = c.canvas.height;
-
-  for (const mark of marks) {
-    if (mark.view !== view) continue;
-    const x = (mark.x / 100) * W;
-    const y = (mark.y / 100) * H;
-    c.strokeStyle = "#b91c1c";
-    c.lineWidth = 3;
-    c.beginPath();
-    c.moveTo(x - 7, y - 7);
-    c.lineTo(x + 7, y + 7);
-    c.moveTo(x + 7, y - 7);
-    c.lineTo(x - 7, y + 7);
-    c.stroke();
-  }
-
-  if (!pendingMark || pendingMark.view !== view) return;
-
-  const x = (pendingMark.x / 100) * W;
-  const y = (pendingMark.y / 100) * H;
-  c.strokeStyle = "#0d9488";
-  c.lineWidth = 2;
-  c.setLineDash([5, 4]);
-  c.beginPath();
-  c.arc(x, y, 11, 0, Math.PI * 2);
-  c.stroke();
-  c.setLineDash([]);
-  c.fillStyle = "#0d9488";
-  c.beginPath();
-  c.arc(x, y, 3, 0, Math.PI * 2);
-  c.fill();
-}
+let canvasBindings: DamageCanvasBinding[] = [];
 
 function paint(): void {
-  for (const v of ["ATAS", "KIRI", "KANAN", "DEPAN", "BELAKANG"]) drawCar(v, true);
+  canvasBindings.forEach((binding) => binding.paint());
 }
 
 /* ---------- Daftar penanda ---------- */
@@ -404,20 +298,8 @@ export function catat(): void {
   paint();
 }
 
-function onCanvasClick(event: MouseEvent): void {
-  const target = event.currentTarget as HTMLCanvasElement | null;
-  if (!target) return;
-  const view = target.dataset.view || "ATAS";
-
-  const rect = target.getBoundingClientRect();
-  const x = rect.width ? Math.round(((event.clientX - rect.left) / rect.width) * 100) : 50;
-  const y = rect.height ? Math.round(((event.clientY - rect.top) / rect.height) * 100) : 50;
-
-  pendingMark = {
-    view,
-    x: Math.max(0, Math.min(100, x)),
-    y: Math.max(0, Math.min(100, y)),
-  };
+function onCanvasPick(mark: { view: string; x: number; y: number }): void {
+  pendingMark = mark;
   renderPendingHint();
   paint();
 }
@@ -564,19 +446,20 @@ function fillForm(): void {
 }
 
 function setupCanvases(): void {
-  for (const view of Object.keys(VIEW_DIMENSIONS)) {
+  canvasBindings.forEach((binding) => binding.destroy());
+  canvasBindings = [];
+
+  for (const view of DAMAGE_VIEWS) {
     const canvas = canvasFor(view);
-    const size = VIEW_DIMENSIONS[view];
-    if (!canvas || !size) continue;
-    canvas.width = size.w;
-    canvas.height = size.h;
-    canvas.onclick = onCanvasClick;
+    if (!canvas) continue;
+    canvasBindings.push(
+      bindDamageCanvas(canvas, view, () => ({ marks, pending: pendingMark }), onCanvasPick),
+    );
   }
-  paint();
 }
 
 function preloadCarImages(): void {
-  for (const view of Object.keys(CAR_SRC)) carImageFor(view);
+  preloadDamageImages();
 }
 
 export async function refresh(): Promise<void> {
@@ -654,14 +537,13 @@ export async function save(): Promise<void> {
   const items = gatherItems();
 
   const pngs: Record<string, string> = {};
+  paint();
   for (const view of [...new Set(marks.map((mark) => mark.view))]) {
     const cv = canvasFor(view);
     if (cv) {
-      drawCar(view, true);
       pngs[view] = cv.toDataURL("image/png");
     }
   }
-  paint();
 
   const payload = {
     tanggal: isoToSlash(tanggal),
