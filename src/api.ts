@@ -255,6 +255,7 @@ export const api = {
     tanggal: string;
     counter: string;
     kendaraan: string;
+    tipeMobil?: string;
     driver: string;
     kilometer: string;
     bbmMasuk: string;
@@ -263,7 +264,6 @@ export const api = {
     diperiksaOleh: string;
     items: { grup: string; item: string; status: string; catatan: string }[];
     damages: { view: string; x: number; y: number; catatan: string }[];
-    pngs: Record<string, string>;
   }): Promise<CkSaveResult> =>
     write<CkSaveResult>('saveCk', body, CONFIG.MAX_DOC_BYTES).then((result) => {
       invalidate('getCkData');

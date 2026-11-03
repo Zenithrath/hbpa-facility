@@ -7,9 +7,10 @@
 "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:checklist": "tsc --noEmit && vite build --config vite.checklist.config.ts && node scripts/build-checklist.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/backend.test.cjs && node tests/frontend.test.cjs"
+    "test": "node tests/backend.test.cjs && node tests/frontend.test.cjs && node tests/manpower.test.cjs"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.0",

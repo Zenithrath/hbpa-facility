@@ -1,3 +1,5 @@
+- Prefers editing forms to reuse the same contenteditable print template/layout as the printed document (so edit and print share one source of truth) rather than a separate input-field panel. Confidence: 0.9
+- When asked to reproduce or port an existing page/UI, implement it with full fidelity (not a simplified approximation) and read all relevant source files thoroughly first; achieve true parity by reusing the original source/build (single source of truth) rather than hand-porting — including re-implementing a document template as inline-styled HTML inside a drawer/panel — since hand-ported approximations are never accepted as "same" and remain visibly messy. Confidence: 0.95
 - Prefers consistent, uniform dimensions across sibling canvases/views in a multi-view layout (e.g. all car views the same square size) rather than mixed per-view dimensions that make the layout look messy or unclear. Confidence: 0.7
 - Prefers one row per logical document/record in spreadsheet/tabular storage (one row per checklist or job) rather than denormalizing into one row per item/damage. Views the many-rows-per-document approach as wasteful and unexpected. Confidence: 0.9
 - Prefers simple input-only data entry without relational/master-data tables (no separate Users/Driver/Vehicle master tabs) unless explicitly requested; dislikes unnecessary relations. Confidence: 0.95
@@ -6,3 +8,10 @@
 - Prefers polished visuals using provided SVG assets over crude hand-drawn canvas outlines. Confidence: 0.75
 - Prefers communication in Indonesian (Bahasa Indonesia). Confidence: 0.85
 - For multi-panel UIs, prefers a side-by-side horizontal layout (primary panel on the left, remaining panels in a 2×2 grid to its right) over vertical stacking; collapse to a single column only below the md breakpoint. Secondary content such as marks/lists that would shrink the primary canvases should be stacked below them instead of beside them. Confidence: 0.75
+- Prefers deploying user-facing pages separately (e.g., to Google Apps Script) rather than hosting them inside the main dashboard app, to keep them isolated and prevent users from navigating to the dashboard/admin area by manipulating the URL. Confidence: 0.85
+- Prefers one production dashboard with separate department/PIC modules grouped into sidebar sections, each backed by its own Apps Script, spreadsheet, and Google Form instead of merging every data source and script into one backend. Confidence: 0.9
+- For admin-only internal dashboards, prefers direct access without login/token/protection until explicitly requested; users should access only their Google Form links. Confidence: 0.85
+- Prefers keeping form-derived datasets independent unless a link is explicitly requested; do not add Request ID, status, triggers, or automatic completion logic just because the source forms could support them. Confidence: 0.9
+- For formal printouts, use the physical document's intended paper size: Manpower Requisition prints A4 and Job Completion prints A4. Confidence: 0.9
+- For approval/signature sections in formal printouts, prefers stacking the blocks vertically (top-to-bottom) rather than side-by-side columns. Confidence: 0.7
+- Prefers starting with the smallest useful scope (“cukup begitu dulu”) and adding workflow automation later only when explicitly requested. Confidence: 0.9

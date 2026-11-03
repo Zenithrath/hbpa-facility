@@ -29,12 +29,18 @@ export const VIEW_DIMENSIONS: Record<string, { w: number; h: number }> = {
  * Lima SVG itu totalnya ~4 MB dan lama di-decode; versi WebP ini ~330 KB
  * sehingga halaman langsung tampil.
  */
+import ckAtas from "../../public/ck-atas.webp";
+import ckBelakang from "../../public/ck-belakang.webp";
+import ckDepan from "../../public/ck-depan.webp";
+import ckKanan from "../../public/ck-kanan.webp";
+import ckKiri from "../../public/ck-kiri.webp";
+
 const CAR_SRC: Record<string, string> = {
-  ATAS: "./ck-atas.webp",
-  KIRI: "./ck-kiri.webp",
-  KANAN: "./ck-kanan.webp",
-  DEPAN: "./ck-depan.webp",
-  BELAKANG: "./ck-belakang.webp",
+  ATAS: ckAtas,
+  KIRI: ckKiri,
+  KANAN: ckKanan,
+  DEPAN: ckDepan,
+  BELAKANG: ckBelakang,
 };
 
 const carImages: Record<string, HTMLImageElement> = {};

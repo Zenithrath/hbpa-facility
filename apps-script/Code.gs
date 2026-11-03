@@ -74,6 +74,22 @@ var MAX_WRITE_BYTES = 4000;
 
 function doGet(e) {
   var param = (e && e.parameter) ? e.parameter : {};
+
+  // Sajikan hanya halaman input Checklist Kendaraan.
+  if (param.page !== undefined) {
+    if (param.page !== 'checklist') {
+      return ContentService.createTextOutput('Halaman tidak ditemukan.')
+        .setMimeType(ContentService.MimeType.TEXT);
+    }
+    try {
+      return HtmlService.createHtmlOutputFromFile('checklist')
+        .setTitle('Checklist Kendaraan');
+    } catch (err) {
+      return ContentService.createTextOutput('Halaman checklist belum tersedia.')
+        .setMimeType(ContentService.MimeType.TEXT);
+    }
+  }
+
   var action = param.action || 'getBootstrap';
   var result;
 

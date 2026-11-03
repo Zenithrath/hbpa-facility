@@ -118,6 +118,32 @@ const DR_PDF = {
   dataUrl: '',
 };
 
+const MR_REQUESTS = [
+  {
+    rowId: 4, sig: 'r4|budi', timestamp: '03/11/2026 07:30',
+    requesterEmail: 'budi@hbpa.test', requesterName: 'Budi Santoso',
+    department: 'Produksi', division: 'Maintenance', requestedDate: '03/11/2026',
+    requiredManpower: 'Electrical, Civil', jobOutline: '1. Ganti lampu\n2. Perbaiki kabel',
+  },
+  {
+    rowId: 3, sig: 'r3|sari', timestamp: '02/11/2026 08:15',
+    requesterEmail: 'sari@hbpa.test', requesterName: 'Sari',
+    department: 'GA', division: 'General', requestedDate: '02/11/2026',
+    requiredManpower: 'Mechanical', jobOutline: '1. Service kompresor',
+  },
+];
+
+const MR_COMPLETIONS = [
+  {
+    rowId: 7, sig: 'c7|andi', timestamp: '03/11/2026 16:10',
+    submittedByEmail: 'andi@hbpa.test', reportedBy: 'Andi',
+    jobName: 'Perbaikan Panel', jobNo: 'MR-PANEL-01', location: 'Workshop',
+    dateTime: '03/11/2026 13:30', manpower: '1. Andi | Electrical\n2. Budi | Civil',
+    jobDescriptionLog: '1. 03/11/2026 08:00 | Cek panel\n2. 03/11/2026 10:00 | Ganti kabel',
+    endUserName: 'Joko', endUserPosition: 'Supervisor',
+  },
+];
+
 const RESPONSES = {
   getBootstrap: BOOTSTRAP,
   getRequests: { items: TRANSPORT, pagination: { page: 1, pageSize: 100, total: 2, totalPages: 1 } },
@@ -131,6 +157,12 @@ const RESPONSES = {
   saveInventaris: { message: 'Tersimpan.' },
   sendEmail: { sent: 1 },
   deleteRequest: { message: 'Dihapus.' },
+  // MR API action names
+  getSummary: { totalRequests: 2, totalCompletions: 1 },
+  getCompletions: { items: MR_COMPLETIONS, pagination: { page: 1, pageSize: 100, total: 1, totalPages: 1 } },
+  saveRequest: MR_REQUESTS[0],
+  saveCompletion: MR_COMPLETIONS[0],
+  deleteCompletion: { deleted: true },
 };
 
 const calls = [];
@@ -139,11 +171,21 @@ const opened = [];
 
 const tick = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 
-function fakeFetch(url) {
-  const action = new URL(url).searchParams.get('action');
+function fakeFetch(url, options) {
+  let action = new URL(url).searchParams.get('action');
+  if (!action && options?.body) {
+    try {
+      action = JSON.parse(String(options.body)).action;
+    } catch {
+      action = '';
+    }
+  }
   calls.push(action);
   urls.push(url);
-  const body = RESPONSES[action] ?? { success: false, message: `aksi tidak dikenal: ${action}` };
+  const isManpower = url.includes('/macros/s/MR/exec');
+  const body = isManpower && action === 'getRequests'
+    ? { items: MR_REQUESTS, pagination: { page: 1, pageSize: 100, total: MR_REQUESTS.length, totalPages: 1 } }
+    : (RESPONSES[action] ?? { success: false, message: `aksi tidak dikenal: ${action}` });
   return Promise.resolve({
     ok: true,
     status: 200,
@@ -152,16 +194,20 @@ function fakeFetch(url) {
 }
 
 const API_URL = 'https://script.google.com/macros/s/X/exec';
+const MR_API_URL = 'https://script.google.com/macros/s/MR/exec';
 
-async function build(apiUrl) {
+async function build(entry, apiUrl) {
   const out = await esbuild.build({
-    entryPoints: [path.join(APP, 'src/main.ts')],
+    entryPoints: [path.join(APP, entry)],
     bundle: true,
     format: 'iife',
     write: false,
     target: 'es2022',
-    loader: { '.css': 'empty' },
-    define: { 'import.meta.env.VITE_GAS_URL': JSON.stringify(apiUrl ?? null) },
+    loader: { '.css': 'empty', '.webp': 'dataurl' },
+    define: {
+      'import.meta.env.VITE_GAS_URL': JSON.stringify(apiUrl ?? null),
+      'import.meta.env.VITE_MR_GAS_URL': JSON.stringify(MR_API_URL),
+    },
   });
   return out.outputFiles[0].text;
 }
@@ -170,15 +216,20 @@ const HTML = fs
   .readFileSync(path.join(APP, 'index.html'), 'utf8')
   .replace(/<script[^>]*><\/script>/g, '');
 
-function makeDom(code, uncaught, logs) {
+const STANDALONE_HTML_PATH = path.join(APP, 'checklist.html');
+const STANDALONE_HTML = fs.existsSync(STANDALONE_HTML_PATH)
+  ? fs.readFileSync(STANDALONE_HTML_PATH, 'utf8').replace(/<script[^>]*><\/script>/g, '')
+  : '<!doctype html><div id="app"></div>';
+
+function makeDom(code, uncaught, logs, html = HTML, url = 'http://localhost/hbpa-facility/') {
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => uncaught.push(e.message));
   vc.on('error', (...a) => logs.push(a.join(' ')));
   vc.on('warn', (...a) => logs.push('WARN ' + a.join(' ')));
 
-  const dom = new JSDOM(HTML, {
+  const dom = new JSDOM(html, {
     runScripts: 'outside-only',
-    url: 'http://localhost/hbpa-facility/',
+    url,
     virtualConsole: vc,
   });
   dom.window.fetch = fakeFetch;
@@ -215,7 +266,7 @@ async function run() {
   // ---- Skenario 1: API_URL masih kosong ----
   const emptyErrors = [];
   const emptyLogs = [];
-  const empty = makeDom(await build(null), emptyErrors, emptyLogs);
+  const empty = makeDom(await build('src/main.ts', null), emptyErrors, emptyLogs);
   await tick();
   const emptyDoc = empty.window.document;
   const emptyText = () => emptyDoc.body.textContent.replace(/\s+/g, ' ');
@@ -224,12 +275,14 @@ async function run() {
   ok('tidak ada exception', emptyErrors.length === 0);
   ok('pesan API_URL kosong muncul', emptyText().includes('API_URL belum diisi'));
   ok('sidebar tetap dirender', Boolean(emptyDoc.getElementById('sidebar')));
-  ok('6 menu navigasi', emptyDoc.querySelectorAll('#nav [data-page]').length === 6);
+  ok('7 menu navigasi (5 Facility + 2 Manpower)', emptyDoc.querySelectorAll('#nav [data-page]').length === 7);
+  ok('section FACILITY tampil', emptyDoc.getElementById('nav')?.textContent.includes('FACILITY'));
+  ok('section MANPOWER tampil', emptyDoc.getElementById('nav')?.textContent.includes('MANPOWER'));
 
   // ---- Skenario 2: API_URL terisi ----
   const uncaught = [];
   const logs = [];
-  const dom = makeDom(await build(API_URL), uncaught, logs);
+  const dom = makeDom(await build('src/main.ts', API_URL), uncaught, logs);
   const { window } = dom;
   const doc = window.document;
   const text = () => doc.body.textContent.replace(/\s+/g, ' ');
@@ -365,35 +418,8 @@ async function run() {
   ok('tanda tangan driver masuk ke area cetak', doc.getElementById('pd-ttd-driver').textContent.includes('Andi Saputra'));
   ok('tanda tangan mengetahui masuk ke area cetak', doc.getElementById('pd-ttd-mengetahui').textContent.includes('Sari'));
 
-  console.log('\n--- halaman Checklist ---');
-  doc.querySelector('[data-page="checklist"]').click();
-  await tick();
-  eq('judul checklist', doc.getElementById('title').textContent, 'Checklist Kendaraan');
-  eq('item dari master tampil', doc.querySelectorAll('#ck-grup .ck-item').length, 2);
-
-  const ckRow = doc.querySelector('#ck-grup .ck-item');
-  const rusak = ckRow.querySelector('input[data-status="Rusak"]');
-  rusak.checked = true;
-  rusak.dispatchEvent(new window.Event('change', { bubbles: true }));
-  ok('catatan muncul saat Rusak', !ckRow.querySelector('[data-catatan]').classList.contains('hidden'));
-  ckRow.querySelector('[data-catatan]').value = 'retak';
-
-  doc.getElementById('ck-kendaraan').value = 'KT 8107 YV';
-  doc.getElementById('ck-driver').value = 'Andi';
-  doc.getElementById('ck-kilometer').value = '62000';
-  doc.getElementById('ck-bbmMasuk').value = '1/2';
-  doc.getElementById('ck-bbmKeluar').value = '1/4';
-  doc.querySelector('[data-action="ck-save"]').click();
-  await tick();
-  ok('saveCk benar-benar dipanggil', calls.includes('saveCk'));
-  const ckUrl = [...urls].reverse().find((u) => u.includes('action=saveCk')) || '';
-  const ckSent = JSON.parse(new URL(ckUrl).searchParams.get('data'));
-  eq('tanggal CK format DD/MM/YYYY', /^\d{2}\/\d{2}\/\d{4}$/.test(ckSent.tanggal), true);
-  eq('items CK terkirim', ckSent.items.length, 2);
-  eq('status rusak terkirim', ckSent.items[0].status, 'Rusak');
-  eq('catatan rusak terkirim', ckSent.items[0].catatan, 'retak');
-  eq('kendaraan CK terkirim', ckSent.kendaraan, 'KT 8107 YV');
-  ok('hasil CK tampil', doc.getElementById('ck-hasil').textContent.includes('CK-'));
+  ok('route input Checklist Kendaraan dihapus dari dashboard', !doc.querySelector('[data-page="checklist"]'));
+  ok('Daftar Checklist tetap tersedia untuk admin', Boolean(doc.querySelector('[data-page="checklist-list"]')));
 
   console.log('\n--- cetak ---');
   doc.querySelector('[data-page="transport"]').click();
@@ -431,6 +457,129 @@ async function run() {
   ok('deleteRequest dipanggil', calls.includes('deleteRequest'));
   const delUrl = urls.find((u) => u.includes('action=deleteRequest')) || '';
   ok('rowId hapus dikirim langsung', /[?&]rowId=\d+(&|$)/.test(delUrl));
+
+  // ---- Skenario 3: halaman user standalone di Apps Script ----
+  console.log('\n--- halaman Checklist standalone Apps Script ---');
+  calls.length = 0;
+  urls.length = 0;
+  opened.length = 0;
+  const standaloneErrors = [];
+  const standaloneLogs = [];
+  const standalone = makeDom(
+    await build('src/checklist-main.ts', API_URL),
+    standaloneErrors,
+    standaloneLogs,
+    STANDALONE_HTML,
+    'https://script.google.com/macros/s/X/exec?page=checklist',
+  );
+  await tick();
+  const standaloneDoc = standalone.window.document;
+  ok('tanpa sidebar/menu admin', !standaloneDoc.getElementById('sidebar'));
+  ok('tanpa topbar dashboard', !standaloneDoc.querySelector('#nav'));
+  ok('judul halaman standalone', standaloneDoc.querySelector('h1')?.textContent.includes('Checklist Kendaraan'));
+  eq('item dari master tampil', standaloneDoc.querySelectorAll('#ck-grup .ck-item').length, 2);
+  ok('tombol Cetak tidak tampil di user page', !standaloneDoc.querySelector('[data-action="ck-print"]'));
+
+  const ckRow = standaloneDoc.querySelector('#ck-grup .ck-item');
+  const rusak = ckRow.querySelector('input[data-status="Rusak"]');
+  rusak.checked = true;
+  rusak.dispatchEvent(new standalone.window.Event('change', { bubbles: true }));
+  ok('catatan muncul saat Rusak', !ckRow.querySelector('[data-catatan]').classList.contains('hidden'));
+  ckRow.querySelector('[data-catatan]').value = 'retak';
+
+  const damageCanvas = standaloneDoc.querySelector('#ck-cv-KIRI');
+  damageCanvas.dispatchEvent(new standalone.window.MouseEvent('click', { bubbles: true, clientX: 40, clientY: 80 }));
+  standaloneDoc.getElementById('ck-sisiCatatan').value = 'baret';
+  standaloneDoc.querySelector('[data-action="ck-catat"]').click();
+  ok('penanda kerusakan tercatat', standaloneDoc.getElementById('ck-markCount').textContent === '1');
+
+  ok('field No. Plat tampil', Boolean(standaloneDoc.getElementById('ck-kendaraan')));
+  ok('field Tipe Mobil tampil', Boolean(standaloneDoc.getElementById('ck-tipeMobil')));
+
+  standaloneDoc.getElementById('ck-kendaraan').value = 'KT 8107 YV';
+  standaloneDoc.getElementById('ck-tipeMobil').value = 'Avanza';
+  standaloneDoc.getElementById('ck-driver').value = 'Andi';
+  standaloneDoc.getElementById('ck-kilometer').value = 'abc';
+  standaloneDoc.querySelector('[data-action="ck-save"]').click();
+  await tick(10);
+  ok('dialog validasi Kilometer muncul', Boolean(standaloneDoc.getElementById('app-dialog')));
+  ok('dialog validasi menyebut Kilometer', standaloneDoc.getElementById('app-dialog')?.textContent.includes('Kilometer'));
+  eq('field Kilometer diberi status invalid', standaloneDoc.getElementById('ck-kilometer')?.getAttribute('aria-invalid'), 'true');
+  ok('API save belum dipanggil saat validasi gagal', !calls.includes('saveCk'));
+  standaloneDoc.getElementById('app-dialog-ok').click();
+
+  standaloneDoc.getElementById('ck-kilometer').value = '62.000';
+  standaloneDoc.getElementById('ck-bbmMasuk').value = '1/2';
+  standaloneDoc.getElementById('ck-bbmKeluar').value = '1/4';
+  standaloneDoc.querySelector('[data-action="ck-save"]').click();
+  await tick();
+  ok('saveCk benar-benar dipanggil dari standalone', calls.includes('saveCk'));
+  ok('dialog berhasil muncul setelah simpan', standaloneDoc.getElementById('app-dialog')?.textContent.includes('Berhasil'));
+  ok('dialog berhasil menyebut form kosong', standaloneDoc.getElementById('app-dialog')?.textContent.includes('dikosongkan'));
+  standaloneDoc.getElementById('app-dialog-ok').click();
+  const standaloneSaveUrl = [...urls].reverse().find((u) => u.includes('action=saveCk')) || '';
+  const standaloneSent = JSON.parse(new URL(standaloneSaveUrl).searchParams.get('data'));
+  eq('items CK standalone terkirim', standaloneSent.items.length, 2);
+  eq('kendaraan CK standalone terkirim', standaloneSent.kendaraan, 'KT 8107 YV');
+  eq('tipe mobil standalone terkirim', standaloneSent.tipeMobil, 'Avanza');
+  eq('Kilometer dinormalisasi', standaloneSent.kilometer, '62000');
+  eq('catatan rusak standalone terkirim', standaloneSent.items[0].catatan, 'retak');
+  ok('damage koordinat tetap terkirim', Array.isArray(standaloneSent.damages) && standaloneSent.damages.length === 1 && standaloneSent.damages[0].view === 'KIRI');
+  ok('payload tidak mengirim PNG', !('pngs' in standaloneSent));
+  ok('tidak ada alert gambar terlalu besar', !standaloneDoc.getElementById('ck-msg')?.textContent.includes('Gambar kerusakan'));
+  eq('form kembali kosong setelah simpan', standaloneDoc.getElementById('ck-kendaraan').value, '');
+  eq('tipe mobil kembali kosong setelah simpan', standaloneDoc.getElementById('ck-tipeMobil').value, '');
+  ok('link PDF tidak ditampilkan ke user', !standaloneDoc.getElementById('ck-hasil')?.textContent.includes('CK-'));
+  eq('error standalone', standaloneErrors, []);
+
+  // ---- Skenario 4: MANPOWER di dashboard yang sama ----
+  console.log('\n--- section MANPOWER ---');
+  calls.length = 0;
+  urls.length = 0;
+  doc.querySelector('[data-page="manpower-requisition"]').click();
+  await tick();
+  eq('judul Manpower Requisition', doc.getElementById('title').textContent, 'Manpower Requisition');
+  eq('2 requisition tampil', doc.querySelectorAll(`#mr-tbody tr`).length, 2);
+  doc.querySelector('[data-action="mr-request-open"][data-id="4"]').click();
+  await tick(50);
+  ok('drawer Manpower Requisition terbuka', !doc.getElementById('drawer').classList.contains('hidden'));
+  doc.querySelector('[data-f="requesterName"]').textContent = 'Budi Update';
+  doc.querySelector('[data-action="mr-request-save"][data-id="4"]').click();
+  await tick();
+  ok('saveRequest dipanggil', calls.includes('saveRequest'));
+
+  doc.querySelector('[data-action="mr-request-print"][data-id="4"]').click();
+  await tick(50);
+  ok('modal tanda tangan Manpower Requisition muncul', !doc.getElementById('sig-modal').classList.contains('hidden'));
+  doc.getElementById('sig-name-approved').value = 'Sari';
+  doc.getElementById('sig-name-requested').value = 'Budi Santoso';
+  doc.getElementById('sig-confirm').click();
+  await tick(50);
+  ok('area cetak Manpower Requisition tampil', !doc.getElementById('print-manpower-requisition').classList.contains('hidden'));
+  eq('nama tersimpan di area cetak', doc.getElementById('mpr-requestedName').textContent, 'Budi Santoso');
+  eq('job outline masuk cetak', doc.getElementById('mpr-outline-1').textContent, '1. Ganti lampu');
+  doc.querySelector('[data-action="close-drawer"]').click();
+
+  doc.querySelector('[data-page="job-completion"]').click();
+  await tick();
+  eq('judul Job Completion', doc.getElementById('title').textContent, 'Job Completion');
+  eq('1 completion tampil', doc.querySelectorAll(`#mc-tbody tr`).length, 1);
+  doc.querySelector('[data-action="mr-completion-open"][data-id="7"]').click();
+  await tick(50);
+  ok('drawer Job Completion terbuka', !doc.getElementById('drawer').classList.contains('hidden'));
+  doc.querySelector('[data-action="mr-completion-save"][data-id="7"]').click();
+  await tick();
+  ok('saveCompletion dipanggil', calls.includes('saveCompletion'));
+  doc.querySelector('[data-action="mr-completion-print"][data-id="7"]').click();
+  await tick(50);
+  ok('modal tanda tangan Job Completion muncul', !doc.getElementById('sig-modal').classList.contains('hidden'));
+  doc.getElementById('sig-name-reported').value = 'Andi';
+  doc.getElementById('sig-name-endUser').value = 'Joko';
+  doc.getElementById('sig-confirm').click();
+  await tick(50);
+  ok('area cetak Job Completion tampil', !doc.getElementById('print-job-completion').classList.contains('hidden'));
+  eq('job rows tergenerate', doc.querySelectorAll('#jc-jobRows tr').length >= 17, true);
+  eq('nama end user masuk cetak', doc.getElementById('jc-endUserName').textContent, 'Joko');
 
   console.log('\n--- tidak ada error JS sepanjang jalan ---');
   eq('error', errors, []);

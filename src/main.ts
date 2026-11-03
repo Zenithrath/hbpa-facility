@@ -14,8 +14,9 @@ import * as overview from './pages/overview';
 import * as transport from './pages/transport';
 import * as inventaris from './pages/inventaris';
 import * as dailyReport from './pages/daily-report';
-import * as checklist from './pages/checklist';
 import { checklistListPage, openDetail as clOpenDetail, printChecklist as clPrintChecklist } from './pages/checklist-list';
+import { manpowerRequisitionPage } from './manpower/requisition';
+import { jobCompletionPage } from './manpower/completion';
 
 /*****************************************************************
    TEMPLATE
@@ -317,142 +318,22 @@ const DAILY_REPORT_PAGE: Page = {
   onFilterChange: () => dailyReport.renderList(),
 };
 
-function solarGauge(id: string, label: string, hint: string): string {
-  return `<div class="rounded-xl border border-surface-200 bg-surface-50 p-3" data-gauge="${id}">
-    <div class="flex items-center justify-between gap-2">
-      <div>
-        <div class="text-xs font-bold tracking-wide text-surface-600 uppercase">${esc(label)}</div>
-        <div class="text-[11px] text-surface-400">${esc(hint)}</div>
-      </div>
-      <span class="inline-flex min-w-12 items-center justify-center rounded-full border border-surface-200 bg-white px-2.5 py-1 text-xs font-bold text-surface-400"
-        data-gauge-badge>—</span>
-    </div>
-    <div class="mt-1 cursor-pointer rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-      role="slider" tabindex="0" aria-label="Level solar ${esc(label.toLowerCase())}"
-      aria-valuemin="0" aria-valuemax="4" aria-valuenow="0" aria-valuetext="Belum dipilih"
-      data-gauge-dial="${id}"></div>
-    <select id="${id}" class="hidden" tabindex="-1" aria-hidden="true"></select>
-  </div>`;
-}
-
-function damageView(view: string, extra = ""): string {
-  const size = checklist.VIEW_DIMENSIONS[view] ?? { w: 480, h: 320 };
-  return `<div class="text-center ${extra}">
-    <div class="rounded-xl border border-surface-200 p-2">
-      <canvas id="ck-cv-${view}" width="${size.w}" height="${size.h}" data-view="${view}"
-        class="block h-auto w-full cursor-crosshair rounded-lg"></canvas>
-    </div>
-    <div class="mt-1 text-xs font-semibold tracking-wide text-surface-600">${view}</div>
-  </div>`;
-}
-
-const CHECKLIST_PAGE: Page = {
-  title: 'Checklist Kendaraan',
-  icon: 'check',
-  html: () => `
-    <div class="space-y-4">
-      <div class="card p-4 sm:p-6">
-        <div id="ck-msg" class="text-sm font-semibold text-surface-700"></div>
-
-        <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <label class="field-label" for="ck-tanggal">Tanggal</label>
-            <input id="ck-tanggal" type="date" class="field">
-          </div>
-          <div>
-            <label class="field-label" for="ck-counter">Counter</label>
-            <input id="ck-counter" type="text" class="field" placeholder="C-01">
-          </div>
-          <div class="sm:col-span-2">
-            <label class="field-label" for="ck-kendaraan">Kendaraan</label>
-            <input id="ck-kendaraan" type="text" class="field" placeholder="No. plat kendaraan">
-          </div>
-          <div>
-            <label class="field-label" for="ck-driver">Driver</label>
-            <input id="ck-driver" type="text" class="field" placeholder="Nama driver">
-          </div>
-          <div>
-            <label class="field-label" for="ck-kilometer">Kilometer</label>
-            <input id="ck-kilometer" type="text" inputmode="numeric" class="field" placeholder="cth 62000">
-          </div>
-          <div class="sm:col-span-2 lg:col-span-4">
-            <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-              <span class="text-xs font-bold tracking-wide text-surface-600 uppercase">Level Solar</span>
-              <span class="text-[11px] text-surface-400">Klik gauge atau tekan panah kiri/kanan untuk memilih level.</span>
-            </div>
-            <div class="mt-2 grid gap-3 sm:grid-cols-2">
-              ${solarGauge('ck-bbmMasuk', 'Masuk', 'Level saat kendaraan keluar')}
-              ${solarGauge('ck-bbmKeluar', 'Kembali', 'Level saat kendaraan kembali')}
-            </div>
-          </div>
-          <div class="sm:col-span-2">
-            <label class="field-label" for="ck-keterangan">Keterangan</label>
-            <input id="ck-keterangan" type="text" class="field" placeholder="Tolong periksa...">
-          </div>
-          <div class="sm:col-span-2">
-            <label class="field-label" for="ck-diperiksaOleh">Diperiksa oleh (mechanic)</label>
-            <input id="ck-diperiksaOleh" type="text" class="field">
-          </div>
-        </div>
-      </div>
-
-      <div class="card p-4 sm:p-6">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <button class="btn-slate" type="button" data-action="ck-semuaBaik">Tandai Semua Baik</button>
-          <span class="text-xs text-surface-500">Baik / Rusak / Tidak Ada. Catatan muncul bila bukan Baik.</span>
-        </div>
-        <div id="ck-grup" class="mt-4"></div>
-      </div>
-
-      <div class="card p-4 sm:p-6">
-        <h4 class="text-sm font-bold">Tanda kerusakan di bodi (opsional)</h4>
-        <p class="mt-1 text-xs text-surface-500">
-          Klik lokasi di gambar kendaraan untuk menandai. Isi catatan bila perlu, lalu klik Catat.
-        </p>
-        <div class="mt-3 grid gap-3 md:grid-cols-[0.7fr_1fr_1fr]">
-          ${damageView('ATAS', 'mx-auto flex h-full w-full max-w-64 flex-col justify-center md:row-span-2 md:max-w-none')}
-          ${damageView('KIRI')}
-          ${damageView('KANAN')}
-          ${damageView('DEPAN')}
-          ${damageView('BELAKANG')}
-        </div>
-        <div class="mt-3 flex flex-wrap items-center gap-2">
-          <input id="ck-sisiCatatan" type="text" class="field w-auto flex-1 py-1.5 text-xs" placeholder="Catatan kerusakan (opsional)">
-          <button class="btn-slate" type="button" data-action="ck-catat">Catat penanda</button>
-          <span id="ck-pendingHint" class="text-[11px] text-surface-400">Klik gambar untuk memilih lokasi.</span>
-        </div>
-        <div class="mt-3 text-sm">
-          <div>Penanda tercatat: <b id="ck-markCount">0</b></div>
-          <ul id="ck-marks" class="mt-2 space-y-2"></ul>
-        </div>
-      </div>
-
-      <div class="card p-4 sm:p-6">
-        <div class="flex flex-wrap items-center gap-3">
-          <button class="btn-slate" type="button" data-action="ck-print">Cetak</button>
-      <button id="ck-simpan" class="btn-primary" type="button" data-action="ck-save">
-            ${icon('check')} Simpan
-          </button>
-          <span id="ck-loading" class="hidden text-sm text-surface-500">Sedang menyimpan...</span>
-        </div>
-        <div id="ck-hasil" class="mt-4"></div>
-      </div>
-    </div>`,
-  mount() {
-    void checklist.refresh();
-  },
-};
-
 const PAGES = {
   overview: OVERVIEW,
   transport: TRANSPORT_PAGE,
   inventaris: INVENTARIS_PAGE,
   daily: DAILY_REPORT_PAGE,
-  checklist: CHECKLIST_PAGE,
   'checklist-list': checklistListPage,
+  'manpower-requisition': manpowerRequisitionPage,
+  'job-completion': jobCompletionPage,
 } as const;
 
 type PageKey = keyof typeof PAGES;
+
+const NAV_SECTIONS = [
+  { label: 'FACILITY', pages: ['overview', 'transport', 'inventaris', 'daily', 'checklist-list'] },
+  { label: 'MANPOWER', pages: ['manpower-requisition', 'job-completion'] },
+] as const satisfies ReadonlyArray<{ label: string; pages: readonly PageKey[] }>;
 
 /* =====================================================
    AREA CETAK
@@ -640,7 +521,159 @@ const PRINT_AREAS = `
       Note : Setiap sore / sehabis kerja harus melapor kepada pemberi tugas
     </div>
   </div>
-</div>    <div id="print-checklist" class="hidden"></div>
+</div>
+
+<div id="print-manpower-requisition" class="hidden">
+  <style>
+    .mpr-paper{box-sizing:border-box;width:100%;min-height:200mm;background:#fff;color:#000;font-family:Calibri,Carlito,'Segoe UI',Arial,sans-serif;font-size:8.5pt;padding:4mm 5mm;border:1.2pt solid #000;}
+    .mpr-paper *{box-sizing:inherit}
+    .mpr-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;min-height:15mm}
+    .mpr-logo img{height:12mm;width:auto;max-width:38mm;object-fit:contain}
+    .mpr-title{text-align:center;white-space:nowrap;font-size:12.5pt;line-height:1.25;font-weight:800;text-decoration:underline;text-underline-offset:1mm;letter-spacing:.1px}
+    .mpr-info{display:grid;grid-template-columns:35mm 2mm 1fr;row-gap:3mm;margin:4mm 4mm 0;align-items:end}
+    .mpr-label{font-size:8pt;font-weight:800;text-transform:uppercase}
+    .mpr-line{display:block;min-height:1.25em;padding:0 .5mm;border-bottom:1px dotted #000;line-height:1.35}
+    .mpr-outline-title{margin:5mm 4mm 2mm;font-size:8pt;font-weight:800;text-transform:uppercase}
+    .mpr-outline{display:grid;grid-template-columns:6mm 1fr;row-gap:2mm;margin:0 4mm;align-items:end}
+    .mpr-outline .no{text-align:right;padding-right:1mm;font-weight:700}
+    .mpr-outline .line{min-height:5mm;display:flex;align-items:flex-end;border-bottom:1px dotted #000;padding-bottom:.4mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .mpr-approval{display:grid;grid-template-columns:repeat(3,1fr);border-top:1.2pt solid #000;margin-top:5mm}
+    .mpr-approval .col{border-right:1.2pt solid #000;display:flex;flex-direction:column;min-width:0}
+    .mpr-approval .col:last-child{border-right:0}
+    .mpr-approval .hd{text-align:center;font-weight:800;height:6mm;line-height:6mm;border-bottom:1.2pt solid #000;font-size:8pt}
+    .mpr-approval .box{height:24mm;display:flex;align-items:flex-end;justify-content:center;padding:1mm;overflow:hidden}
+    .mpr-approval .nm{border-top:1.2pt solid #000;padding:1mm 1.5mm;line-height:5.2mm;font-size:7pt}
+    .mpr-approval .inline-line{display:inline-block;min-width:55%;border-bottom:1px dotted #000;padding:0 .5mm}
+  </style>
+  <main class="mpr-paper">
+    <header class="mpr-head">
+      <div class="mpr-logo"><img src="https://hidup-baru.com/wp-content/uploads/2023/04/cropped-HBPA.png" alt="Hidup Baru" referrerpolicy="no-referrer"></div>
+      <div class="mpr-title">MANPOWER REQUISITION FORM</div>
+      <div></div>
+    </header>
+
+    <section class="mpr-info">
+      <div class="mpr-label">* Department</div><div>:</div><div id="mpr-department" class="mpr-line"></div>
+      <div class="mpr-label">* Division</div><div>:</div><div id="mpr-division" class="mpr-line"></div>
+      <div class="mpr-label">* Requested Date</div><div>:</div><div id="mpr-requestedDate" class="mpr-line"></div>
+      <div class="mpr-label">* Required Manpower</div><div>:</div><div id="mpr-requiredManpower" class="mpr-line"></div>
+    </section>
+
+    <div class="mpr-outline-title">* Job Out Line / Short Description</div>
+    <section class="mpr-outline">
+      <div class="no">1.</div><div id="mpr-outline-1" class="line"></div>
+      <div class="no">2.</div><div id="mpr-outline-2" class="line"></div>
+      <div class="no">3.</div><div id="mpr-outline-3" class="line"></div>
+      <div class="no">4.</div><div id="mpr-outline-4" class="line"></div>
+      <div class="no">5.</div><div id="mpr-outline-5" class="line"></div>
+      <div class="no">6.</div><div id="mpr-outline-6" class="line"></div>
+      <div class="no">7.</div><div id="mpr-outline-7" class="line"></div>
+      <div class="no">8.</div><div id="mpr-outline-8" class="line"></div>
+      <div class="no">9.</div><div id="mpr-outline-9" class="line"></div>
+      <div class="no">10.</div><div id="mpr-outline-10" class="line"></div>
+    </section>
+
+    <footer class="mpr-approval">
+      <div class="col">
+        <div class="hd">Approved by:</div>
+        <div id="mpr-approved-ttd" class="box"></div>
+        <div class="nm">Name : <span id="mpr-approvedName" class="inline-line"></span><br>Date : <span id="mpr-approvedDate" class="inline-line"></span></div>
+      </div>
+      <div class="col">
+        <div class="hd">Acknowledged by:</div>
+        <div id="mpr-ack-ttd" class="box"></div>
+        <div class="nm">Name : <span id="mpr-ackName" class="inline-line"></span><br>Date : <span id="mpr-ackDate" class="inline-line"></span></div>
+      </div>
+      <div class="col">
+        <div class="hd">Requested by:</div>
+        <div id="mpr-requested-ttd" class="box"></div>
+        <div class="nm">Name : <span id="mpr-requestedName" class="inline-line"></span><br>Date : <span id="mpr-requestedDate2" class="inline-line"></span></div>
+      </div>
+    </footer>
+  </main>
+</div>
+
+<div id="print-job-completion" class="hidden">
+  <style>
+    .jc-paper{box-sizing:border-box;width:100%;min-height:285mm;margin:0 auto;background:#fff;color:#000;font-family:Calibri,Carlito,'Segoe UI',Arial,sans-serif;font-size:10pt;padding:8mm 10mm;}
+    .jc-paper *{box-sizing:inherit}
+    .jc-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;min-height:16mm}
+    .jc-logo img{height:14mm;width:auto;max-width:48mm;object-fit:contain}
+    .jc-title{text-align:center;white-space:nowrap;font-size:16pt;font-weight:800;line-height:1.25;text-decoration:underline;text-underline-offset:1.2mm}
+    .jc-reported{display:grid;grid-template-columns:26mm 2mm 1fr;row-gap:3mm;align-items:end;margin:2mm 0 0 45mm;max-width:120mm}
+    .jc-label{font-size:9pt;font-weight:800}
+    .jc-line{display:block;min-height:1.25em;padding:0 1mm;border-bottom:1px dotted #000;line-height:1.35}
+    .jc-signbox{height:22mm;margin:1mm 0 0 10mm;border:1.2px solid #000;border-radius:3mm;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .jc-info{display:grid;grid-template-columns:45mm 2mm 1fr;row-gap:2.5mm;margin:5mm 0 0 3mm;align-items:end;padding-right:3mm}
+    .jc-info .lbl{font-size:9pt;font-weight:800;text-transform:uppercase}
+    .jc-manpower{display:grid;grid-template-columns:45mm 2mm 1fr;row-gap:2mm;margin:4mm 0 0 3mm;align-items:end;padding-right:3mm}
+    .jc-manpower .lbl{font-size:9pt;font-weight:800;text-transform:uppercase}
+    .jc-manpower-line{display:flex;align-items:flex-end;gap:2mm;min-width:0}
+    .jc-manpower-line .n{font-weight:800}
+    .jc-manpower-line .line{flex:1;border-bottom:1px dotted #000;min-height:1.25em;padding:0 .5mm}
+    .jc-jobs{width:100%;border-collapse:collapse;margin:5mm 0 6mm;table-layout:fixed;border:1.2px solid #000}
+    .jc-jobs th{height:6mm;font-size:8.5pt;font-weight:800;text-transform:uppercase;border:1.2px solid #000;text-align:center}
+    .jc-jobs td{height:6mm;padding:0 1.5mm;vertical-align:middle;border:1px solid #000;font-size:8pt;overflow-wrap:anywhere}
+    .jc-jobs td.no{text-align:center}
+    .jc-enduser{display:grid;grid-template-columns:38% 1fr;border:1.2px solid #000;height:34mm;margin:auto 8% 0 0}
+    .jc-eu-left{display:flex;flex-direction:column;border-right:1.2px solid #000}
+    .jc-eu-left>div{padding:0 2mm}
+    .jc-eu-title{text-align:center;border-bottom:1.2px solid #000;font-weight:700;height:7mm;line-height:7mm}
+    .jc-eu-name{border-bottom:1.2px solid #000;height:7mm;line-height:7mm;font-size:8pt}
+    .jc-eu-pos{border-bottom:1.2px solid #000;height:7mm;line-height:7mm;font-size:8pt}
+    .jc-eu-sign{flex:1;display:flex;align-items:flex-end;padding-bottom:2mm;overflow:hidden}
+    .jc-inline{display:inline-block;min-width:48mm;border-bottom:1px dotted #000;padding:0 .5mm}
+  </style>
+  <main class="jc-paper">
+    <header class="jc-head">
+      <div class="jc-logo"><img src="https://hidup-baru.com/wp-content/uploads/2023/04/cropped-HBPA.png" alt="Hidup Baru" referrerpolicy="no-referrer"></div>
+      <div class="jc-title">JOB COMPLETION REPORT</div>
+      <div></div>
+    </header>
+
+    <section class="jc-reported">
+      <div class="jc-label">REPORTED BY</div><div>:</div><div id="jc-reportedBy" class="jc-line"></div>
+      <div class="jc-label">SIGNATURE</div><div>:</div><div></div>
+      <div></div><div></div><div id="jc-reported-ttd" class="jc-signbox"></div>
+    </section>
+
+    <section class="jc-info">
+      <div class="lbl">Job Name</div><div>:</div><div id="jc-jobName" class="jc-line"></div>
+      <div class="lbl">Job No.</div><div>:</div><div id="jc-jobNo" class="jc-line"></div>
+      <div class="lbl">Location</div><div>:</div><div id="jc-location" class="jc-line"></div>
+      <div class="lbl">Date &amp; Time</div><div>:</div><div id="jc-dateTime" class="jc-line"></div>
+    </section>
+
+    <section class="jc-manpower">
+      <div class="lbl">Manpower<br>Name / Classification</div><div>:</div>
+      <div class="jc-manpower-line"><span class="n">1)</span><span id="jc-mp-name-1" class="line"></span><span>/</span><span id="jc-mp-class-1" class="line"></span></div>
+      <div></div><div>:</div>
+      <div class="jc-manpower-line"><span class="n">2)</span><span id="jc-mp-name-2" class="line"></span><span>/</span><span id="jc-mp-class-2" class="line"></span></div>
+      <div></div><div>:</div>
+      <div class="jc-manpower-line"><span class="n">3)</span><span id="jc-mp-name-3" class="line"></span><span>/</span><span id="jc-mp-class-3" class="line"></span></div>
+      <div></div><div>:</div>
+      <div class="jc-manpower-line"><span class="n">4)</span><span id="jc-mp-name-4" class="line"></span><span>/</span><span id="jc-mp-class-4" class="line"></span></div>
+    </section>
+
+    <table class="jc-jobs">
+      <colgroup><col style="width:17mm"><col style="width:40mm"><col></colgroup>
+      <thead><tr><th>No</th><th>Date &amp; Time</th><th>Job Description</th></tr></thead>
+      <tbody id="jc-jobRows"></tbody>
+    </table>
+
+    <section class="jc-enduser">
+      <div class="jc-eu-left">
+        <div class="jc-eu-title">END USER</div>
+        <div class="jc-eu-name">NAME : <span id="jc-endUserName" class="jc-inline"></span></div>
+        <div class="jc-eu-pos">POSITION : <span id="jc-endUserPosition" class="jc-inline"></span></div>
+        <div class="jc-eu-sign"><div>SIGN :<div id="jc-endUser-ttd"></div></div></div>
+      </div>
+      <div></div>
+    </section>
+  </main>
+</div>
+
+<div id="print-checklist" class="hidden"></div>
 `;
 
 /* =====================================================
@@ -710,22 +743,18 @@ const ACTIONS: Record<string, Handler> = {
     );
   },
 
-  'ck-save': () => checklist.save(),
-  'ck-print': () => {
-    const prefill = $<HTMLInputElement>('ck-diperiksaOleh')?.value ?? '';
-    askSignature(
-      'Cetak Checklist Kendaraan',
-      [{ key: 'diperiksa', label: 'Diperiksa oleh', prefillName: prefill, required: true }],
-      (sigs) => checklist.printRow(sigs),
-    );
-  },
-  'ck-reset': () => checklist.reset(),
-  'ck-semuaBaik': () => checklist.semuaBaik(),
-  'ck-catat': () => checklist.catat(),
-  'ck-delMark': (_el, id) => checklist.removeMark(id),
-
   'cl-open': (_el, id) => clOpenDetail(id),
   'cl-print': (_el, id) => clPrintChecklist(id),
+
+  'mr-request-open': (_el, id) => manpowerRequisitionPage.openDrawer(id),
+  'mr-request-save': (_el, id) => manpowerRequisitionPage.save(id),
+  'mr-request-delete': (_el, id) => manpowerRequisitionPage.remove(id),
+  'mr-request-print': (_el, id) => manpowerRequisitionPage.printRequest(id),
+
+  'mr-completion-open': (_el, id) => jobCompletionPage.openDrawer(id),
+  'mr-completion-save': (_el, id) => jobCompletionPage.save(id),
+  'mr-completion-delete': (_el, id) => jobCompletionPage.remove(id),
+  'mr-completion-print': (_el, id) => jobCompletionPage.printRequest(id),
 };
 /* =====================================================
    ROUTER
@@ -739,16 +768,21 @@ function pageKeyFromHash(): PageKey {
 }
 
 function renderNav(): void {
-  must('nav').innerHTML = (Object.keys(PAGES) as PageKey[])
-    .map((key) => {
-      const page = PAGES[key];
-      const active = key === current;
-      return `<button class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
-        active
-          ? 'bg-primary-50 font-semibold text-primary-600 shadow-sm'
-          : 'font-medium text-surface-600 hover:bg-surface-100 hover:text-surface-900'
-      }" data-page="${key}">${icon(page.icon, 'w-[18px] h-[18px]')} <span>${esc(page.title)}</span></button>`;
-    })
+  must('nav').innerHTML = NAV_SECTIONS
+    .map((section) => `<div class="pt-2 first:pt-0">
+      <div class="px-3 pb-1.5 pt-2 text-[10px] font-extrabold tracking-[0.16em] text-surface-400">${esc(section.label)}</div>
+      <div class="space-y-1">
+        ${section.pages.map((key) => {
+          const page = PAGES[key];
+          const active = key === current;
+          return `<button class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
+            active
+              ? 'bg-primary-50 font-semibold text-primary-600 shadow-sm'
+              : 'font-medium text-surface-600 hover:bg-surface-100 hover:text-surface-900'
+          }" data-page="${key}">${icon(page.icon, 'w-[18px] h-[18px]')} <span>${esc(page.title)}</span></button>`;
+        }).join('')}
+      </div>
+    </div>`)
     .join('');
 }
 
@@ -780,7 +814,7 @@ function toggleSidebar(force?: boolean): void {
 }
 
 function wireInputs(page: Page): void {
-  for (const id of ['q', 'inv-q', 'mail-q', 'dr-q']) {
+  for (const id of ['q', 'inv-q', 'mail-q', 'dr-q', 'mr-search', 'mc-search']) {
     $(id)?.addEventListener('input', () => page.onSearchInput?.());
   }
   for (const id of ['filter-status', 'filter-dept', 'inv-status', 'dr-status']) {
@@ -794,6 +828,10 @@ function wireInputs(page: Page): void {
 
 async function refreshAll(): Promise<void> {
   invalidateAll();
+  if (current === 'manpower-requisition' || current === 'job-completion') {
+    await PAGES[current].mount?.();
+    return;
+  }
   try {
     const boot = await api.bootstrap();
     store.stats = boot.stats;

@@ -85,6 +85,7 @@ const ss = {
 const sentMail = [];
 const driveFiles = [];
 const driveFolders = {};
+const htmlFiles = [];
 const ctx = {
   console,
   SpreadsheetApp: { getActiveSpreadsheet: () => ss, flush() {} },
@@ -114,6 +115,14 @@ const ctx = {
   Logger: { log: (...a) => console.log('   [log]', ...a) },
   MailApp: { sendEmail: (o) => sentMail.push(o) },
   HtmlService: {
+    createHtmlOutputFromFile: (file) => {
+      htmlFiles.push(file);
+      return {
+        setTitle(title) {
+          return { kind: 'html', file, title };
+        },
+      };
+    },
     createHtmlOutput: () => ({
       getBlob: () => ({
         getAs: () => ({
@@ -527,7 +536,6 @@ const ck = post('saveCk', {
   keterangan: 'Tolong periksa bawah', diperiksaOleh: 'Budi',
   items: masterItems,
   damages: [{ view: 'KIRI', x: 30, y: 40, catatan: 'retak' }],
-  pngs: { KIRI: 'data:image/png;base64,AAAA' },
 });
 eq('sukses', ck.success, true);
 eq('ID format CK-YYYYMMDD-NNN', ck.data.item.id, 'CK-20261018-001');
@@ -543,7 +551,7 @@ eq('catatan rusak ikut', (itemsJson.find(function(it){return it.item==='Oli Mesi
 eq('status rusak ikut', (itemsJson.find(function(it){return it.item==='Oli Mesin'})||{}).status, 'Rusak');
 eq('damage tersimpan di CK', dmgJson.length, 1);
 eq('damage view', dmgJson[0].view, 'KIRI');
-eq('PNG ke Drive', /drive\.example/.test(dmgJson[0].linkGambar), true);
+eq('koordinat damage yang disimpan', dmgJson[0].linkGambar || '', '');
 
 const ck2 = post('saveCk', {
   tanggal: '18/10/2026', kendaraan: 'KT 9999 ZZ', driver: 'Budi',
@@ -588,6 +596,16 @@ eq('getMasters tetap bisa dibuka', call('getMasters').success, true);
 eq('simpan DR tetap bisa (input Google Form)', post('saveDr', { tanggal: '19/10/2026', driver: 'Sopir Form', rows: [{ start: '07:00', finish: '08:00' }] }).success, true);
 ctx.SESSION_EMAIL = 'admin@hbpa.test';
 
+console.log('\n--- halaman user Apps Script ---');
+const pageOk = ctx.doGet({ parameter: { page: 'checklist' } });
+eq('hanya file checklist yang dilayani', pageOk.file, 'checklist');
+eq('judul halaman checklist', pageOk.title, 'Checklist Kendaraan');
+const pageNope = ctx.doGet({ parameter: { page: '../Code' } });
+eq('page di luar whitelist tidak dilayani', /tidak ditemukan/i.test(pageNope.text || ''), true);
+const pageDr = ctx.doGet({ parameter: { page: 'dr' } });
+eq('page dr tidak dilayani', /tidak ditemukan/i.test(pageDr.text || ''), true);
+eq('createHtmlOutputFromFile hanya dipanggil untuk checklist', htmlFiles, ['checklist']);
+
 console.log('\n--- halaman DR/CK pindah ke frontend ---');
 const pageFs = require('fs');
 const appDir = path.join(__dirname, '..', 'apps-script');
@@ -595,6 +613,10 @@ eq('dr.html sudah dihapus', pageFs.existsSync(path.join(appDir, 'dr.html')), fal
 eq('ck.html sudah dihapus', pageFs.existsSync(path.join(appDir, 'ck.html')), false);
 const codeGs = pageFs.readFileSync(path.join(appDir, 'Code.gs'), 'utf8');
 eq('tidak ada cabang page=dr/ck', /param\.page === 'dr'/.test(codeGs), false);
+const checklistHtml = pageFs.readFileSync(path.join(appDir, 'checklist.html'), 'utf8');
+eq('standalone tidak memakai asset JS/CSS eksternal', /(src|href)=\"[^\"]*(?:assets\/|\.\/assets)/.test(checklistHtml), false);
+eq('standalone tidak memakai gambar webp relatif', /\.\/ck-[a-z]+\.webp/i.test(checklistHtml), false);
+eq('standalone tidak berisi shell admin', /id=\"sidebar\"|id=\"nav\"/.test(checklistHtml), false);
 eq('getMasters tetap JSON', call('getMasters').success, true);
 
 console.log(`\n=== ${pass} pass, ${fail} fail ===`);

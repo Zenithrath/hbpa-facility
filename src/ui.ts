@@ -100,6 +100,50 @@ export function toast(message: string, kind: 'info' | 'error' = 'info'): void {
   toastTimer = window.setTimeout(() => el.classList.add('hidden'), kind === 'error' ? 5000 : 3000);
 }
 
+export interface NoticeDialogOptions {
+  title: string;
+  message: string;
+  tone: 'success' | 'error';
+  buttonLabel?: string;
+}
+
+/** Dialog singkat untuk hasil aksi penting (mis. simpan checklist). */
+export function showNoticeDialog({ title, message, tone, buttonLabel }: NoticeDialogOptions): void {
+  document.getElementById('app-dialog')?.remove();
+  const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const isSuccess = tone === 'success';
+  const buttonText = buttonLabel ?? (isSuccess ? 'Tutup' : 'Periksa lagi');
+
+  const overlay = document.createElement('div');
+  overlay.id = 'app-dialog';
+  overlay.className = 'fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-4';
+  overlay.innerHTML = `<div role="dialog" aria-modal="true" aria-labelledby="app-dialog-title" class="w-full max-w-md rounded-2xl border ${isSuccess ? 'border-emerald-200' : 'border-red-200'} bg-white p-5 text-center shadow-2xl sm:p-6">
+    <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full ${isSuccess ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}">
+      ${icon(isSuccess ? 'check' : 'alert', 'h-6 w-6')}
+    </div>
+    <h2 id="app-dialog-title" class="mt-3 text-lg font-bold text-surface-900">${esc(title)}</h2>
+    <p class="mt-2 text-sm leading-6 text-surface-600">${esc(message)}</p>
+    <button id="app-dialog-ok" type="button" class="${isSuccess ? 'btn-primary' : 'btn bg-red-600 px-5 py-2 text-white hover:bg-red-700'} mt-4 w-full sm:w-auto">${esc(buttonText)}</button>
+  </div>`;
+
+  const close = () => {
+    overlay.remove();
+    document.removeEventListener('keydown', onKeydown);
+    previousFocus?.focus();
+  };
+  const onKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') close();
+  };
+
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) close();
+  });
+  overlay.querySelector('#app-dialog-ok')?.addEventListener('click', close);
+  document.addEventListener('keydown', onKeydown);
+  document.body.appendChild(overlay);
+  window.setTimeout(() => overlay.querySelector<HTMLButtonElement>('#app-dialog-ok')?.focus(), 0);
+}
+
 /* ---------- Drawer ---------- */
 
 export interface DrawerContent {
@@ -260,12 +304,14 @@ export function isoToSlash(iso: string): string {
 
 /* ---------- Cetak ---------- */
 
-export const print = {
-  currentTarget: null as 'transport' | 'inventaris' | 'daily' | 'checklist' | null,
+type PrintTarget = 'transport' | 'inventaris' | 'daily' | 'checklist' | 'manpower-requisition' | 'job-completion';
 
-  show(target: 'transport' | 'inventaris' | 'daily' | 'checklist'): void {
+export const print = {
+  currentTarget: null as PrintTarget | null,
+
+  show(target: PrintTarget): void {
     this.currentTarget = target;
-    for (const key of ['transport', 'inventaris', 'daily', 'checklist'] as const) {
+    for (const key of ['transport', 'inventaris', 'daily', 'checklist', 'manpower-requisition', 'job-completion'] as const) {
       $(`print-${key}`)?.classList.toggle('hidden', key !== target);
     }
   },
@@ -273,7 +319,7 @@ export const print = {
   hide(): void {
     this.currentTarget = null;
     document.getElementById('hbpa-print-page')?.remove();
-    for (const key of ['transport', 'inventaris', 'daily', 'checklist'] as const) {
+    for (const key of ['transport', 'inventaris', 'daily', 'checklist', 'manpower-requisition', 'job-completion'] as const) {
       $(`print-${key}`)?.classList.add('hidden');
     }
   },
@@ -294,8 +340,8 @@ export const print = {
     const style = document.createElement('style');
     style.id = 'hbpa-print-page';
     let size = 'A5 landscape';
-    if (this.currentTarget === 'transport') size = 'A5 portrait';
-    if (this.currentTarget === 'checklist') size = 'A4 portrait';
+    if (this.currentTarget === 'transport' || this.currentTarget === 'manpower-requisition') size = 'A5 portrait';
+    if (this.currentTarget === 'checklist' || this.currentTarget === 'job-completion') size = 'A4 portrait';
     style.textContent = `@media print { @page { size: ${size}; margin: 2mm; } }`;
     document.head.appendChild(style);
     window.setTimeout(() => window.print(), 150);

@@ -41,8 +41,8 @@ export const CONFIG = {
   MAX_WRITE_BYTES: 4000,
 
   /**
-   * Batas payload dokumen DR/CK. Lebih besar karena checklist membawa
-   * tangkapan PNG tanda kerusakan (data URL base64).
+   * Batas payload dokumen DR/CK. Lebih besar karena CK membawa daftar item
+   * yang cukup banyak dalam satu payload JSON.
    */
   MAX_DOC_BYTES: 50_000,
 } as const;

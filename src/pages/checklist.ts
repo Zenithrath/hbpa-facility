@@ -7,15 +7,15 @@
  */
 
 import { api } from "../api";
-import { CONFIG } from "../config";
 import type { CkDamage, CkItem, CkSaveResult, DrCkMaster } from "../schema";
-import { $, esc, field$, isoToSlash, print, type Signatures, toast, todayISO, icon, orDash, must, emptyRow } from "../ui";
+import { $, esc, field$, isoToSlash, print, type Signatures, toast, todayISO, icon, orDash, must, emptyRow, showNoticeDialog } from "../ui";
 import { message } from "./transport";
 import { store } from "../store";
 import {
   DAMAGE_VIEWS,
   bindDamageCanvas,
   preloadDamageImages,
+  VIEW_DIMENSIONS,
   type DamageCanvasBinding,
 } from "./checklist-canvas";
 
@@ -85,6 +85,141 @@ const DEFAULT_CK_ITEMS: { grup: string; item: string; urutan: string }[] = [
   { grup: "Interior", item: "Power Window", urutan: "11" },
   { grup: "Interior", item: "Gauges", urutan: "12" },
 ];
+
+/* ---------- Halaman (HTML + mount) untuk dipakai main.ts & entry standalone ---------- */
+
+export function solarGaugeHtml(id: string, label: string, hint: string): string {
+  return `<div class="rounded-xl border border-surface-200 bg-surface-50 p-3" data-gauge="${id}">
+    <div class="flex items-center justify-between gap-2">
+      <div>
+        <div class="text-xs font-bold tracking-wide text-surface-600 uppercase">${esc(label)}</div>
+        <div class="text-[11px] text-surface-400">${esc(hint)}</div>
+      </div>
+      <span class="inline-flex min-w-12 items-center justify-center rounded-full border border-surface-200 bg-white px-2.5 py-1 text-xs font-bold text-surface-400" data-gauge-badge>—</span>
+    </div>
+    <div class="mt-1 cursor-pointer rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" role="slider" tabindex="0" aria-label="Level solar ${esc(label.toLowerCase())}" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0" aria-valuetext="Belum dipilih" data-gauge-dial="${id}"></div>
+    <select id="${id}" class="hidden" tabindex="-1" aria-hidden="true"></select>
+  </div>`;
+}
+
+export function damageViewHtml(view: string, extra = ""): string {
+  const size = VIEW_DIMENSIONS[view] ?? { w: 480, h: 320 };
+  return `<div class="text-center ${extra}">
+    <div class="rounded-xl border border-surface-200 p-2">
+      <canvas id="ck-cv-${view}" width="${size.w}" height="${size.h}" data-view="${view}" class="block h-auto w-full cursor-crosshair rounded-lg"></canvas>
+    </div>
+    <div class="mt-1 text-xs font-semibold tracking-wide text-surface-600">${view}</div>
+  </div>`;
+}
+
+export interface ChecklistPageOptions {
+  hidePrint?: boolean;
+  resetOnSave?: boolean;
+}
+
+let resetAfterSave = false;
+
+export function checklistPageHtml(options: ChecklistPageOptions = {}): string {
+  return `
+    <div class="space-y-4">
+      <div class="card p-4 sm:p-6">
+        <div id="ck-msg" class="text-sm font-semibold text-surface-700"></div>
+
+        <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label class="field-label" for="ck-tanggal">Tanggal</label>
+            <input id="ck-tanggal" type="date" class="field">
+          </div>
+          <div>
+            <label class="field-label" for="ck-counter">Counter</label>
+            <input id="ck-counter" type="text" class="field" placeholder="C-01">
+          </div>
+          <div>
+            <label class="field-label" for="ck-kendaraan">No. Plat</label>
+            <input id="ck-kendaraan" type="text" class="field" placeholder="No. plat kendaraan" autocomplete="off">
+          </div>
+          <div>
+            <label class="field-label" for="ck-tipeMobil">Tipe Mobil</label>
+            <input id="ck-tipeMobil" type="text" class="field" placeholder="cth Avanza" autocomplete="off">
+          </div>
+          <div>
+            <label class="field-label" for="ck-driver">Driver</label>
+            <input id="ck-driver" type="text" class="field" placeholder="Nama driver">
+          </div>
+          <div>
+            <label class="field-label" for="ck-kilometer">Kilometer</label>
+            <input id="ck-kilometer" type="text" inputmode="numeric" class="field" placeholder="cth 62000">
+          </div>
+          <div class="sm:col-span-2 lg:col-span-4">
+            <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <span class="text-xs font-bold tracking-wide text-surface-600 uppercase">Level Solar</span>
+              <span class="text-[11px] text-surface-400">Klik gauge atau tekan panah kiri/kanan untuk memilih level.</span>
+            </div>
+            <div class="mt-2 grid gap-3 sm:grid-cols-2">
+              ${solarGaugeHtml('ck-bbmMasuk', 'Masuk', 'Level saat kendaraan keluar')}
+              ${solarGaugeHtml('ck-bbmKeluar', 'Kembali', 'Level saat kendaraan kembali')}
+            </div>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="field-label" for="ck-keterangan">Keterangan</label>
+            <input id="ck-keterangan" type="text" class="field" placeholder="Tolong periksa...">
+          </div>
+          <div class="sm:col-span-2">
+            <label class="field-label" for="ck-diperiksaOleh">Diperiksa oleh (mechanic)</label>
+            <input id="ck-diperiksaOleh" type="text" class="field">
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-4 sm:p-6">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <button class="btn-slate" type="button" data-action="ck-semuaBaik">Tandai Semua Baik</button>
+          <span class="text-xs text-surface-500">Baik / Rusak / Tidak Ada. Catatan muncul bila bukan Baik.</span>
+        </div>
+        <div id="ck-grup" class="mt-4"></div>
+      </div>
+
+      <div class="card p-4 sm:p-6">
+        <h4 class="text-sm font-bold">Tanda kerusakan di bodi (opsional)</h4>
+        <p class="mt-1 text-xs text-surface-500">
+          Klik lokasi di gambar kendaraan untuk menandai. Isi catatan bila perlu, lalu klik Catat.
+        </p>
+        <div class="mt-3 grid gap-3 md:grid-cols-[0.7fr_1fr_1fr]">
+          ${damageViewHtml('ATAS', 'mx-auto flex h-full w-full max-w-64 flex-col justify-center md:row-span-2 md:max-w-none')}
+          ${damageViewHtml('KIRI')}
+          ${damageViewHtml('KANAN')}
+          ${damageViewHtml('DEPAN')}
+          ${damageViewHtml('BELAKANG')}
+        </div>
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <input id="ck-sisiCatatan" type="text" class="field w-auto flex-1 py-1.5 text-xs" placeholder="Catatan kerusakan (opsional)">
+          <button class="btn-slate" type="button" data-action="ck-catat">Catat penanda</button>
+          <span id="ck-pendingHint" class="text-[11px] text-surface-400">Klik gambar untuk memilih lokasi.</span>
+        </div>
+        <div class="mt-3 text-sm">
+          <div>Penanda tercatat: <b id="ck-markCount">0</b></div>
+          <ul id="ck-marks" class="mt-2 space-y-2"></ul>
+        </div>
+      </div>
+
+      <div class="card p-4 sm:p-6">
+        <div class="flex flex-wrap items-center gap-3">
+          ${options.hidePrint ? '' : '<button class="btn-slate" type="button" data-action="ck-print">Cetak</button>'}
+          <button id="ck-simpan" class="btn-primary" type="button" data-action="ck-save">
+            <svg class="inline w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            Simpan
+          </button>
+          <span id="ck-loading" class="hidden text-sm text-surface-500">Sedang menyimpan...</span>
+        </div>
+        <div id="ck-hasil" class="mt-4"></div>
+      </div>
+    </div>`; 
+}
+
+export function mountChecklistPage(options: ChecklistPageOptions = {}): void {
+  resetAfterSave = Boolean(options.resetOnSave);
+  void refresh();
+}
 
 /* ---------- Bantuan DOM ---------- */
 
@@ -434,10 +569,8 @@ function fillForm(): void {
   const tanggal = $<HTMLInputElement>("ck-tanggal");
   if (tanggal && !tanggal.value) tanggal.value = todayISO();
 
-  const kendaraan = $<HTMLInputElement>("ck-kendaraan");
-  if (kendaraan && masters?.kendaraan?.length) {
-    kendaraan.value = kendaraan.value || masters.kendaraan[0]?.noPlat || "";
-  }
+  // No. Plat dan Tipe Mobil sengaja dibiarkan free text; tidak diisi otomatis
+  // dari master agar user bisa mengetik kendaraan yang benar-benar dipakai.
 
   const driver = $<HTMLInputElement>("ck-driver");
   if (driver && masters?.driver) driver.value = masters.driver;
@@ -523,32 +656,54 @@ function gatherItems(): CkItem[] {
     .filter((item) => Boolean(item.item));
 }
 
+function normalizeKilometer(raw: string): { value: string } | { error: string } {
+  const cleaned = raw.trim().replace(/\s+/g, '');
+  if (!cleaned) return { value: '' };
+  if (!/^\d{1,3}([.,]\d{3})+$|^\d+$/.test(cleaned)) {
+    return {
+      error: 'Mohon isi Kilometer dengan angka, misalnya 62000 atau 62.000. Jika tidak diketahui, kosongkan isiannya.',
+    };
+  }
+  return { value: cleaned.replace(/[.,]/g, '') };
+}
+
 export async function save(): Promise<void> {
   showMsg("");
 
   const tanggal = $<HTMLInputElement>("ck-tanggal")?.value ?? "";
   const kendaraan = $<HTMLInputElement>("ck-kendaraan")?.value ?? "";
+  const tipeMobil = $<HTMLInputElement>("ck-tipeMobil")?.value ?? "";
   const driver = $<HTMLInputElement>("ck-driver")?.value ?? "";
-  const kilometer = $<HTMLInputElement>("ck-kilometer")?.value.trim() ?? "";
+  const kilometerInput = $<HTMLInputElement>("ck-kilometer");
+  const kilometerRaw = kilometerInput?.value ?? "";
+  const kilometerResult = normalizeKilometer(kilometerRaw);
+  if ("error" in kilometerResult) {
+    const message = kilometerResult.error;
+    kilometerInput?.setAttribute("aria-invalid", "true");
+    kilometerInput?.classList.add("!border-red-500", "bg-red-50");
+    showMsg(message, true);
+    showNoticeDialog({ title: "Checklist belum tersimpan", message, tone: "error", buttonLabel: "Periksa lagi" });
+    kilometerInput?.focus();
+    return;
+  }
+  kilometerInput?.removeAttribute("aria-invalid");
+  kilometerInput?.classList.remove("!border-red-500", "bg-red-50");
+  const kilometer = kilometerResult.value;
   const bbmMasuk = $<HTMLSelectElement>("ck-bbmMasuk")?.value ?? "";
   const bbmKeluar = $<HTMLSelectElement>("ck-bbmKeluar")?.value ?? "";
 
 
   const items = gatherItems();
 
-  const pngs: Record<string, string> = {};
+  // Gambar kendaraan tidak dikirim. Dashboard dan PDF menggambar ulang tanda
+  // kerusakan hanya dari view/x/y/catatan.
   paint();
-  for (const view of [...new Set(marks.map((mark) => mark.view))]) {
-    const cv = canvasFor(view);
-    if (cv) {
-      pngs[view] = cv.toDataURL("image/png");
-    }
-  }
 
   const payload = {
     tanggal: isoToSlash(tanggal),
     counter: $<HTMLInputElement>("ck-counter")?.value ?? "",
     kendaraan,
+    tipeMobil,
     driver,
     kilometer,
     bbmMasuk,
@@ -562,13 +717,7 @@ export async function save(): Promise<void> {
       y: mark.y,
       catatan: mark.catatan,
     })),
-    pngs,
   };
-
-  if (JSON.stringify(payload).length > CONFIG.MAX_DOC_BYTES) {
-    payload.pngs = {};
-    toast("Gambar kerusakan terlalu besar; penanda tetap disimpan tanpa gambar.", "error");
-  }
 
   const saveButton = $<HTMLButtonElement>("ck-simpan");
   const loading = $("ck-loading");
@@ -577,10 +726,25 @@ export async function save(): Promise<void> {
 
   try {
     const result = await api.saveCk(payload);
-    showResult(result);
-    toast("Checklist tersimpan. PDF siap dicetak.");
+    if (resetAfterSave) {
+      reset();
+      const successMessage = "Checklist berhasil disimpan. Formulir sudah dikosongkan dan siap digunakan kembali.";
+      showMsg("Checklist tersimpan. Silakan isi checklist berikutnya.");
+      toast("Checklist tersimpan.");
+      showNoticeDialog({ title: "Berhasil tersimpan", message: successMessage, tone: "success", buttonLabel: "Tutup" });
+    } else {
+      const successMessage = "Checklist berhasil tersimpan dan PDF sudah siap dicetak.";
+      showResult(result);
+      toast("Checklist tersimpan. PDF siap dicetak.");
+      showNoticeDialog({ title: "Berhasil tersimpan", message: successMessage, tone: "success", buttonLabel: "Tutup" });
+    }
   } catch (error) {
-    showMsg(message(error), true);
+    const raw = message(error);
+    const friendly = /km ngawur/i.test(raw)
+      ? "Mohon periksa isian Kilometer. Gunakan angka saja, misalnya 62000 atau 62.000, atau kosongkan bila tidak diketahui."
+      : `Mohon periksa kembali isian Anda. ${raw}`;
+    showMsg(friendly, true);
+    showNoticeDialog({ title: "Checklist belum tersimpan", message: friendly, tone: "error", buttonLabel: "Periksa lagi" });
   } finally {
     if (saveButton) saveButton.disabled = false;
     loading?.classList.add("hidden");
@@ -607,6 +771,17 @@ function showResult(result: CkSaveResult): void {
 export function reset(): void {
   const box = $("ck-hasil");
   if (box) box.innerHTML = "";
+
+  const tanggal = field$("ck-tanggal");
+  if (tanggal) tanggal.value = todayISO();
+  const counter = field$("ck-counter");
+  if (counter) counter.value = "";
+  const kendaraan = field$("ck-kendaraan");
+  if (kendaraan) kendaraan.value = "";
+  const tipeMobil = field$("ck-tipeMobil");
+  if (tipeMobil) tipeMobil.value = "";
+  const driver = field$("ck-driver");
+  if (driver) driver.value = "";
 
   for (const id of ["ck-keterangan", "ck-diperiksaOleh", "ck-kilometer", "ck-bbmMasuk", "ck-bbmKeluar"]) {
     const el = field$(id);
@@ -636,10 +811,11 @@ export function printRow(sigs?: Signatures): void {
   const keterangan = $<HTMLInputElement>("ck-keterangan")?.value ?? "";
   const diperiksaOleh = $<HTMLInputElement>("ck-diperiksaOleh")?.value ?? "";
   const counter = $<HTMLInputElement>("ck-counter")?.value ?? "";
+  const tipeMobil = $<HTMLInputElement>("ck-tipeMobil")?.value ?? "";
 
   print.show('checklist');
   print.set('pc-counter', counter);
-  print.set('pc-tipe', "");
+  print.set('pc-tipe', tipeMobil);
   print.set('pc-driver', driver);
   print.set('pc-tanggal', tanggal);
   print.set('pc-nopol', kendaraan);
