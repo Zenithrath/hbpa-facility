@@ -30,7 +30,7 @@ var CONFIG = {
   // ID spreadsheet target. WAJIB diisi agar Web App bisa dibuka oleh pengguna publik
   // (getActiveSpreadsheet() gagal untuk Viewer). Ambil dari URL:
   // https://docs.google.com/spreadsheets/d/[ID_ADA_DI_SINI]/edit
-  spreadsheetId: '1X4LrcWyrw2H2usveT8YPSCKLxjs6DdJ1NSSg3IasGxk',  // DEV
+  spreadsheetId: '1X4LrcWyrw2H2usveT8YPSCKLxjs6DdJ1NSSg3IasGxk',
 
   timezone: 'Asia/Makassar',
 
@@ -556,7 +556,7 @@ function getRequests_(param) {
   list.sort(function (a, b) { return b.rowId - a.rowId; });
 
   var page = Math.max(1, parseInt(param.page, 10) || 1);
-  var pageSize = Math.min(200, Math.max(1, parseInt(param.pageSize, 10) || 100));
+  var pageSize = Math.min(10, Math.max(1, parseInt(param.pageSize, 10) || 10));
   var total = list.length;
   var start = (page - 1) * pageSize;
 
@@ -572,6 +572,13 @@ function getRequests_(param) {
       }
     }
   };
+}
+
+/** Ambil satu halaman terakhir saja tanpa membangun seluruh list.
+ *  Berguna untuk pagination fokus; dipakai frontend pada kebutuhan baru. */
+function getRequestsPaged_(param) {
+  // listTransport_ sudah di-cache (60s) & terurut terbaru di atas dari backend.
+  return getRequests_(param || {});
 }
 
 function getRequestDetail_(rowId) {
@@ -2315,3 +2322,4 @@ function ckPdfForRow_(rowId) {
   // Placeholder: checklist PDF generated on demand not implemented; return fail.
   return fail_('Cetak PDF Checklist belum tersedia.');
 }
+
