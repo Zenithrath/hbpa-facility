@@ -117,7 +117,54 @@ function doGet(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+var WRITE_ACTIONS = {
+  createRequest: 1, updateRequest: 1, updateRequestStatus: 1, deleteRequest: 1, sendEmail: 1,
+  saveInventaris: 1, deleteInventaris: 1,
+  saveDr: 1, updateDr: 1, updateDrStatus: 1, deleteDr: 1,
+  saveCk: 1, updateCk: 1, updateCkStatus: 1, deleteCk: 1
+};
+
+/**
+ * Otorisasi sederhana (Prioritas 1): jika script property 'API_KEY' disetel,
+ * aksi tulis wajib mengirim 'key' yang sama. Dibiarkan off bila tidak disetel
+ * supaya deployment lama tetap jalan. Baca selalu terbuka.
+ */
+function requireAuth_(param) {
+  if (!(param && typeof param === 'object')) return fail_('Permintaan tidak valid.');
+  var key = '';
+  try { key = PropertiesService.getScriptProperties().getProperty('API_KEY') || ''; } catch (e) {}
+  if (!key) return null; // auth dimatikan
+  var sent = '';
+  try {
+    var body = param.data ? JSON.parse(param.data) : param;
+    sent = String(body.key || '');
+  } catch (e) {}
+  if (sent && sent === key) return null;
+  return fail_('Tidak diizinkan.');
+}
+
 function dispatch_(action, param) {
+  var started = Date.now();
+  // Audit trail: catat semua aksi tulis (Prioritas 2).
+  if (WRITE_ACTIONS[action]) {
+    try { Logger.log('[AUDIT] ' + new Date().toISOString() + ' ' + action); } catch (e) {}
+  }
+  var result;
+  try {
+    result = dispatchInner_(action, param);
+  } catch (err) {
+    console.error('[' + action + '] ' + (err && err.message ? err.message : err));
+    result = fail_(String(err && err.message ? err.message : err));
+  }
+  Logger.log('[' + action + '] ' + (Date.now() - started) + 'ms');
+  return result;
+}
+
+function dispatchInner_(action, param) {
+  if (WRITE_ACTIONS[action]) {
+    var denied = requireAuth_(param);
+    if (denied) return denied;
+  }
   switch (action) {
     case 'getBootstrap':        return getBootstrap_();
     case 'getDashboardStats':   return { success: true, data: { stats: computeStats_() } };
@@ -472,12 +519,19 @@ function isEmptyTransport_(item) {
 }
 
 function listTransport_() {
+  try {
+    var hit = CacheService.getScriptCache().get('hbpa_list');
+    if (hit) return JSON.parse(hit);
+  } catch (e) {}
   var read = readAll_('transport');
   var out = [];
   for (var i = 0; i < read.rows.length; i++) {
     var item = transportItem_(read.rows[i].data, read.colsMap, read.rows[i].rowId);
     if (!isEmptyTransport_(item)) out.push(item);
   }
+  try {
+    CacheService.getScriptCache().put('hbpa_list', JSON.stringify(out), 60);
+  } catch (e) {}
   return out;
 }
 
@@ -609,6 +663,14 @@ function createRequest_(body) {
   var raw = JSON.stringify(body);
   if (raw.length > MAX_WRITE_BYTES) return fail_('Data terlalu panjang untuk dikirim lewat URL.');
 
+  // Idempotency: jangan sampai request ganda membuat baris duplikat.
+  var cache = CacheService.getScriptCache();
+  var idemKey = body.idemKey ? String(body.idemKey) : '';
+  if (idemKey) {
+    var hit = cache.get('hbpa:idem:' + idemKey);
+    if (hit) return ok_(JSON.parse(hit));
+  }
+
   withLock_(function () {
     var sh = sheet_('transport');
     var colsMap = cols_('transport');
@@ -637,6 +699,9 @@ function createRequest_(body) {
 
     sh.appendRow(out);
     clearStatsCache_();
+    if (idemKey) {
+      try { cache.put('hbpa:idem:' + idemKey, JSON.stringify({ message: 'Permintaan tersimpan.' }), 600); } catch (e) {}
+    }
   });
 
   return ok_({ message: 'Permintaan tersimpan.' });
@@ -680,7 +745,10 @@ function updateRequest_(body) {
 
     var colsMap = cols_('transport');
 
-    var current = sh.getRange(rowId, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
+    var range = sh.getRange(rowId, 1, 1, sh.getLastColumn());
+    var values = range.getValues()[0];
+    var formulas = range.getFormulas()[0];
+    var current = range.getDisplayValues()[0];
     if (body.sig && sig_(current, colsMap, 'transport') !== body.sig) {
       throw new Error('Isi baris ini sudah berubah di spreadsheet. Muat ulang halaman lalu coba lagi.');
     }
@@ -702,15 +770,17 @@ function updateRequest_(body) {
     }
 
     // Tulis kolom satu per satu supaya rumus di kolom lain tetap utuh.
+    var out = [];
+    for (var c = 0; c < sh.getLastColumn(); c++) out.push(formulas[c] ? formulas[c] : values[c]);
     Object.keys(patch).forEach(function (k) {
       var col = colsMap.fields[k];
       if (col) {
-        sh.getRange(rowId, col).setValue(patch[k]);
+        out[col - 1] = patch[k];
       } else if (!optional[k]) {
         missing.push(k);
       }
     });
-
+    sh.getRange(rowId, 1, 1, out.length).setValues([out]);
     clearStatsCache_();
   });
 
@@ -762,7 +832,9 @@ function deleteSheetRow_(key, rowId) {
 
 function clearStatsCache_() {
   try {
-    CacheService.getScriptCache().remove('hbpa_stats');
+    var cache = CacheService.getScriptCache();
+    cache.remove('hbpa_stats');
+    cache.remove('hbpa_list');
     colCache_ = {};
   } catch (e) {}
 }

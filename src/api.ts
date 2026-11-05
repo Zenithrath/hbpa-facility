@@ -28,6 +28,30 @@ import type {
 
 type Query = Record<string, string | number | boolean | undefined | null>;
 
+/** Token API (opsional). Dikonfigurasi lewat VITE_API_KEY; bila diisi,
+ *  semua aksi tulis mengirim 'key'. Dibaca dari env saat build. */
+const API_KEY = (typeof import.meta.env?.VITE_API_KEY === 'string' ? import.meta.env.VITE_API_KEY : '') || '';
+
+/* ---------- Retry dengan exponential backoff (Prioritas 3) ---------- */
+const sleep = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
+
+/** Retry hanya untuk operasi baca; tulis tidak diulang agar tidak ganda. */
+async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      // Jangan retry error definitif (mis. data tidak ada).
+      const message = error instanceof Error ? error.message : String(error ?? '');
+      if (/tidak ditemukan|wajib|tidak diizinkan|ngawur|terlalu panjang/i.test(message)) throw error;
+      if (attempt < retries) await sleep(250 * 2 ** attempt);
+    }
+  }
+  throw lastError;
+}
+
 interface CacheEntry {
   at: number;
   value: unknown;
@@ -93,7 +117,7 @@ async function read<T>(action: string, query: Query = {}): Promise<T> {
   const pending = inflight.get(key);
   if (pending) return pending as Promise<T>;
 
-  const job = fetch(url)
+  const job = withRetry(() => fetch(url), 2)
     .then((res) => parse(res, action))
     .then((r) => r.data as T)
     .then((value) => {
@@ -115,7 +139,7 @@ async function write<T>(
   body: Record<string, unknown>,
   maxBytes: number = CONFIG.MAX_WRITE_BYTES,
 ): Promise<T> {
-  const payload = JSON.stringify(body);
+  const payload = JSON.stringify(API_KEY ? { ...body, key: API_KEY } : body);
   if (payload.length > maxBytes) {
     throw new Error(
       `Data terlalu besar untuk dikirim lewat URL (${payload.length} karakter). ` +
@@ -131,7 +155,8 @@ async function write<T>(
 }
 
 async function writeParams<T>(action: string, query: Query): Promise<T> {
-  const url = buildUrl(action, { ...query, _t: Date.now() });
+  const query2 = API_KEY ? { ...query, key: API_KEY } : query;
+  const url = buildUrl(action, { ...query2, _t: Date.now() });
   const res = await fetch(url);
   const parsed = await parse(res, action);
   if (parsed.warning) console.warn(`[${action}] ${parsed.warning}`);
