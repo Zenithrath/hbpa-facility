@@ -9,6 +9,59 @@ import type { JobCompletion, ListResponse, ManpowerRequest } from './types';
 
 const MR_URL = (import.meta.env.VITE_MR_GAS_URL as string | undefined) || '';
 
+/* ---------- Cache halaman Manpower (Prioritas 3) ---------- */
+const MR_CACHE_TTL = 60_000;
+const mrCache = new Map<string, { at: number; value: unknown }>();
+const mrInflight = new Map<string, Promise<unknown>>();
+let mrCacheSeq = 0;
+
+export function invalidateManpowerCache(): void {
+  mrCache.clear();
+  mrCacheSeq++;
+}
+
+const sleep = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
+
+/** Retry hanya untuk read. Tulis tidak diulang agar tidak ganda. */
+async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error ?? '');
+      if (/tidak ditemukan|wajib|tidak diizinkan|ngawur|terlalu panjang/i.test(message)) throw error;
+      if (attempt < retries) await sleep(250 * 2 ** attempt);
+    }
+  }
+  throw lastError;
+}
+
+async function fetchRead<T>(action: string, params: Record<string, string | number | undefined>): Promise<T> {
+  const url = new URL(requireManpowerUrl());
+  url.searchParams.set('action', action);
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === '') continue;
+    url.searchParams.set(key, String(value));
+  }
+  const key = url.toString();
+  const hit = mrCache.get(key);
+  if (hit && Date.now() - hit.at < MR_CACHE_TTL) return hit.value as T;
+  const pending = mrInflight.get(key);
+  if (pending) return pending as Promise<T>;
+  const seq = mrCacheSeq;
+  const job = withRetry(() => fetch(url.toString(), { method: 'GET', cache: 'no-store' }), 2)
+    .then((res) => parse_(res, action))
+    .then((value) => {
+      if (seq === mrCacheSeq) mrCache.set(key, { at: Date.now(), value });
+      return value;
+    })
+    .finally(() => mrInflight.delete(key));
+  mrInflight.set(key, job);
+  return job as Promise<T>;
+}
+
 export class ManpowerApiError extends Error {
   readonly action: string;
 
@@ -56,14 +109,7 @@ async function parse_(res: Response, action: string): Promise<unknown> {
 }
 
 async function read<T>(action: string, params: Record<string, string | number | undefined> = {}): Promise<T> {
-  const url = new URL(requireManpowerUrl());
-  url.searchParams.set('action', action);
-  for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === '') continue;
-    url.searchParams.set(key, String(value));
-  }
-  const res = await fetch(url.toString(), { method: 'GET', cache: 'no-store' });
-  return (await parse_(res, action)) as T;
+  return fetchRead<T>(action, params);
 }
 
 async function write<T>(action: string, body: Record<string, unknown>): Promise<T> {
@@ -74,7 +120,9 @@ async function write<T>(action: string, body: Record<string, unknown>): Promise<
     body: JSON.stringify({ action, ...body }),
     cache: 'no-store',
   });
-  return (await parse_(res, action)) as T;
+  const value = (await parse_(res, action)) as T;
+  invalidateManpowerCache();
+  return value;
 }
 
 export const manpowerApi = {

@@ -511,7 +511,7 @@ const GLOBAL_ACTIONS: Record<string, Handler> = {
   'toggle-sidebar': () => toggleSidebar(),
   'close-sidebar': () => toggleSidebar(true),
   'close-drawer': () => drawer.close(),
-  'refresh-all': () => refreshAll(),
+  refresh: () => refreshAll(),
 };
 
 /**
