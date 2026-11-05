@@ -52,25 +52,60 @@
   }
 
   /* Tombol. Semua varian menyertakan bentuk dasar secara eksplisit karena
-     Tailwind v4 tidak bisa @apply kelas kustom milik sendiri. */
+     Tailwind v4 tidak bisa @apply kelas kustom milik sendiri.
+     Satu varian = satu kata kerja (lihat actionBtn di ui.ts):
+     detail, print, danger (hapus), dan primary (simpan/aksi utama). */
   .btn,
-  .btn-amber,
+  .btn-primary,
   .btn-slate,
-  .btn-blue,
-  .btn-primary {
+  .btn-detail,
+  .btn-print,
+  .btn-danger {
     @apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition;
-  }
-  .btn-amber {
-    @apply text-amber-700 bg-amber-50 hover:bg-amber-100;
   }
   .btn-slate {
     @apply text-surface-700 bg-surface-100 hover:bg-surface-200;
   }
-  .btn-blue {
+  .btn-detail {
+    @apply text-primary-700 bg-primary-50 hover:bg-primary-100;
+  }
+  .btn-print {
     @apply text-blue-700 bg-blue-50 hover:bg-blue-100;
+  }
+  .btn-danger {
+    @apply text-red-600 bg-surface-100 hover:bg-red-50;
   }
   .btn-primary {
     @apply rounded-xl px-5 py-2 text-white bg-primary-600 shadow-sm hover:bg-primary-700;
+  }
+  .btn:disabled,
+  .btn-primary:disabled,
+  .btn-slate:disabled,
+  .btn-detail:disabled,
+  .btn-print:disabled,
+  .btn-danger:disabled {
+    @apply cursor-not-allowed;
+  }
+
+  /* Tabel daftar. Semua halaman memakai kelas .table supaya header, jarak,
+     dan baris hover-nya identik. */
+  .table {
+    @apply w-full border-collapse text-left text-sm;
+  }
+  .table thead {
+    @apply bg-surface-50 text-[11px] font-bold tracking-wider text-surface-500 uppercase;
+  }
+  .table th {
+    @apply px-4 py-3.5 whitespace-nowrap;
+  }
+  .table td {
+    @apply px-4 py-3;
+  }
+  .table tbody tr {
+    @apply cursor-pointer border-b border-surface-100 last:border-0 hover:bg-surface-100;
+  }
+  .table tbody tr:hover .sticky-col {
+    @apply bg-surface-100;
   }
 
   .field {
@@ -93,6 +128,13 @@
   }
 }
 
+/* Penanda kolom wajib yang masih kosong (validateRequired di ui.ts).
+   Dipakai untuk .field biasa maupun baris contenteditable di drawer surat. */
+.is-invalid {
+  border-color: #dc2626 !important;
+  background-color: #fef2f2 !important;
+}
+
 /* Kolom aksi tetap diam saat tabel di-scroll horizontal */
 .sticky-col {
   @apply sticky right-0 bg-white;
@@ -108,6 +150,70 @@
   position: absolute;
   inset: 0 auto auto 0;
   width: 100%;
+}
+
+/* Kertas A4 Checklist Kendaraan. Dulu disuntik sebagai <style> tiap kali
+   renderChecklistPaper dipanggil (buka drawer & tiap ketik di mode edit),
+   yang memaksa recalc seluruh halaman. Sekarang statis. */
+.ck-paper {
+  position: relative;
+  width: 595.28pt;
+  height: 841.89pt;
+  background: #fff;
+  margin: 0 auto;
+  font-family: Helvetica, Arial, sans-serif;
+  color: #000;
+  font-size: 8pt;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.35);
+}
+.ck-paper .ck-r { position: absolute; border: 0.7pt solid #000; }
+.ck-paper .ck-l { position: absolute; height: 0; border-top: 0.7pt solid #000; }
+.ck-paper .ck-t { position: absolute; white-space: nowrap; line-height: 1; }
+.ck-paper .ck-g { position: absolute; display: block; overflow: visible; }
+.ck-paper .ck-carwrap { position: absolute; }
+.ck-paper .ck-car { width: 100%; height: auto; display: block; }
+.ck-paper .ck-mark { position: absolute; color: #dc2626; font-weight: 700; font-size: 12pt; transform: translate(-50%, -50%); }
+.ck-paper .ck-marknote { position: absolute; color: #dc2626; font-size: 7pt; transform: translate(-50%, 0); white-space: nowrap; }
+.ck-paper .ck-ket,
+.ck-paper .ck-ttd { position: absolute; font-size: 9pt; white-space: pre-wrap; word-break: break-word; line-height: 1; }
+
+/* Job Completion dan Checklist memakai kertas A4 penuh; Manpower Requisition
+   A5 portrait (sama dengan pratinjau di drawer); form lain A5 landscape. */
+@media print {
+  @page jc {
+    size: A4 portrait;
+    margin: 0;
+  }
+  @page ck {
+    size: A4 portrait;
+    margin: 0;
+  }
+  @page mpr {
+    size: A5 portrait;
+    margin: 0;
+  }
+  /* Nama halaman hanya berlaku kalau elemennya ada di aliran normal:
+     Chrome mengabaikan `page` pada elemen position:fixed, jadi lembar A4/A5
+     akan tercetak di kertas default (A5 landscape) dan terpotong. */
+  #print-job-completion:not(.hidden) {
+    page: jc;
+    position: static !important;
+  }
+  #print-checklist:not(.hidden) {
+    page: ck;
+    position: static !important;
+  }
+  #print-manpower-requisition:not(.hidden) {
+    page: mpr;
+    position: static !important;
+  }
+  .jc-paper {
+    width: 210mm;
+    height: 296.5mm;
+    min-height: 0;
+    margin: 0;
+  }
 }
 
 @media print {
@@ -132,19 +238,23 @@
   #print-job-completion:not(.hidden) * {
     visibility: visible !important;
   }
+  /* Hanya shell aplikasi yang disembunyikan. Jangan pakai `main`/`header`
+     polos: lembar cetak MPR dan Job Completion juga memakai <main>/<header>.
+     `#app > main` adalah wrapper halaman dashboard; kalau tidak ikut
+     disembunyikan, tingginya tetap memakan layout (visibility:hidden) dan
+     mendorong lembar cetak ke halaman kedua (halaman pertama jadi kosong). */
   .no-print,
   #sidebar,
   #drawer,
-  main,
-  header {
+  body > main,
+  #app > main {
     display: none !important;
   }
+  /* Form A5 boleh fixed (tidak memakai named page). Lembar A4 tidak,
+     lihat aturan `page:` di blok sebelumnya. */
   #print-transport:not(.hidden),
   #print-inventaris:not(.hidden),
-  #print-daily:not(.hidden),
-  #print-checklist:not(.hidden),
-  #print-manpower-requisition:not(.hidden),
-  #print-job-completion:not(.hidden) {
+  #print-daily:not(.hidden) {
     position: fixed !important;
     top: 0;
     left: 0;
@@ -152,4 +262,104 @@
     height: auto;
     page-break-after: avoid;
   }
+  #print-checklist:not(.hidden),
+  #print-manpower-requisition:not(.hidden),
+  #print-job-completion:not(.hidden) {
+    width: 100%;
+    height: auto;
+  }
+}
+/* ---------- Lembar Job Completion Report (drawer & area cetak) ---------- */
+.jc-paper {
+  box-sizing: border-box;
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 8mm 12mm;
+  background: #fff;
+  color: #000;
+  display: flex;
+  flex-direction: column;
+  font-family: Calibri, Carlito, "Segoe UI", Arial, sans-serif;
+  font-size: 10pt;
+  overflow: hidden;
+}
+.jc-paper * { box-sizing: inherit; }
+.jc-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
+.jc-logo img { display: block; height: 18mm; width: auto; max-width: 58mm; object-fit: contain; }
+.jc-title {
+  text-align: center; white-space: nowrap; font-size: 17pt; font-weight: 800;
+  text-decoration: underline; text-underline-offset: 1.2mm; letter-spacing: 0.2px;
+}
+.jc-sign-block {
+  grid-column: 2 / 4; margin-top: 4mm; display: grid;
+  grid-template-columns: 30mm 3mm 1fr; row-gap: 3mm; align-items: start; padding-left: 20mm;
+}
+.jc-sign-block .lbl { font-weight: 700; font-size: 9pt; }
+.jc-sign-box {
+  height: 22mm; border: 1.2px solid #000; border-radius: 4mm;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.jc-line { display: block; min-height: 1.25em; padding: 0 1mm; border-bottom: 1px dotted #000; }
+.jc-inline {
+  display: inline-block; min-width: 38mm; padding: 0 1mm;
+  border-bottom: 1px dotted #000; vertical-align: baseline;
+}
+.jc-info {
+  display: grid; grid-template-columns: 62mm 3mm 1fr; row-gap: 2.6mm;
+  margin: 7mm 0 0 0; align-items: end; padding-right: 6mm;
+}
+.jc-info .lbl { font-weight: 700; font-size: 9.5pt; text-transform: uppercase; }
+.jc-mp { display: flex; align-items: flex-end; gap: 1.5mm; }
+.jc-mp .n { font-weight: 700; }
+.jc-mp .line { flex: 1; min-height: 1.25em; padding: 0 1mm; border-bottom: 1px dotted #000; }
+.jc-mp .slash { font-weight: 700; }
+.jc-jobs {
+  width: 100%; border-collapse: collapse; margin-top: 5mm; margin-bottom: 6mm;
+  table-layout: fixed; border: 1.2px solid #000;
+}
+.jc-jobs th {
+  height: 7mm; font-size: 9.5pt; font-weight: 800; text-transform: uppercase;
+  border: 1.2px solid #000; text-align: center; background: #fff;
+}
+.jc-jobs td {
+  height: 5.8mm; padding: 0 1.5mm; vertical-align: middle;
+  border: 1px solid #000; font-size: 9.5pt; overflow-wrap: anywhere;
+}
+.jc-jobs td.no { text-align: center; }
+.jc-enduser {
+  margin: auto 0 0 8%; display: grid; grid-template-columns: 38% 1fr;
+  border: 1.2px solid #000; height: 42mm;
+}
+.jc-eu-left { display: flex; flex-direction: column; border-right: 1.2px solid #000; }
+.jc-eu-left > div { padding: 0 2mm; }
+.jc-eu-title {
+  text-align: center; border-bottom: 1.2px solid #000;
+  font-weight: 600; height: 7mm; line-height: 7mm;
+}
+.jc-eu-name { border-bottom: 1.2px solid #000; height: 7.5mm; line-height: 7.5mm; }
+.jc-eu-sign { flex: 1; padding-top: 1mm !important; display: flex; flex-direction: column; min-height: 0; }
+.jc-eu-ttd { flex: 1; display: flex; align-items: flex-end; overflow: hidden; }
+.jc-eu-ttd img { max-height: 100%; width: auto; max-width: 100%; object-fit: contain; }
+.jc-eu-pos { height: 7.5mm; line-height: 7.5mm; }
+.jc-eu-left .jc-inline { min-width: 0; width: 55%; }
+
+/* Di drawer: lembar bisa digulir mendatar kalau layar sempit. */
+.jc-fit { overflow-x: auto; border-radius: 0.75rem; background: #eef0f3; }
+.jc-fit .jc-paper { box-shadow: 0 2px 12px rgb(0 0 0 / 0.25); }
+.jc-edit [contenteditable]:hover { background: #fffbe6; }
+.jc-edit [contenteditable]:focus { outline: 2px solid #2563eb; outline-offset: 1px; background: #fffbe6; }
+@media print {
+  /* Menimpa min-height layar supaya lembar pas satu halaman A4. */
+  .jc-paper {
+    width: 210mm;
+    height: 296.5mm;
+    min-height: 0;
+    margin: 0;
+    box-shadow: none;
+  }
+  .jc-paper,
+  .jc-paper * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .jc-edit [contenteditable]:hover,
+  .jc-edit [contenteditable]:focus { background: none; outline: none; }
 }

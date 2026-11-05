@@ -8,9 +8,9 @@
 
 import { api } from "../api";
 import type { CkDamage, CkItem, CkSaveResult, DrCkMaster } from "../schema";
-import { $, esc, field$, isoToSlash, print, type Signatures, toast, todayISO, icon, orDash, must, emptyRow, showNoticeDialog } from "../ui";
-import { message } from "./transport";
-import { store } from "../store";
+import { $, actionBtn, esc, errorText, field$, isoToSlash, setBusy, toast, todayISO, showNoticeDialog } from "../ui";
+/** Pesan error server dipakai apa adanya di halaman ini. */
+const message = errorText;
 import {
   DAMAGE_VIEWS,
   bindDamageCanvas,
@@ -102,11 +102,16 @@ export function solarGaugeHtml(id: string, label: string, hint: string): string 
   </div>`;
 }
 
-export function damageViewHtml(view: string, extra = ""): string {
+/**
+ * Satu tampilan kendaraan. Semua tampilan memakai tinggi kotak yang sama
+ * supaya gambar depan/belakang tidak tampil lebih besar dari tampilan lain;
+ * kanvas menyesuaikan diri dengan rasio SVG-nya di dalam kotak itu.
+ */
+export function damageViewHtml(view: string): string {
   const size = VIEW_DIMENSIONS[view] ?? { w: 480, h: 320 };
-  return `<div class="text-center ${extra}">
-    <div class="rounded-xl border border-surface-200 p-2">
-      <canvas id="ck-cv-${view}" width="${size.w}" height="${size.h}" data-view="${view}" class="block h-auto w-full cursor-crosshair rounded-lg"></canvas>
+  return `<div class="text-center">
+    <div class="flex h-44 items-center justify-center rounded-xl border border-surface-200 bg-white p-1">
+      <canvas id="ck-cv-${view}" width="${size.w}" height="${size.h}" data-view="${view}" class="block h-auto max-h-full w-auto max-w-full cursor-crosshair rounded-lg"></canvas>
     </div>
     <div class="mt-1 text-xs font-semibold tracking-wide text-surface-600">${view}</div>
   </div>`;
@@ -173,7 +178,7 @@ export function checklistPageHtml(options: ChecklistPageOptions = {}): string {
 
       <div class="card p-4 sm:p-6">
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <button class="btn-slate" type="button" data-action="ck-semuaBaik">Tandai Semua Baik</button>
+          ${actionBtn('all-good')}
           <span class="text-xs text-surface-500">Baik / Rusak / Tidak Ada. Catatan muncul bila bukan Baik.</span>
         </div>
         <div id="ck-grup" class="mt-4"></div>
@@ -184,16 +189,23 @@ export function checklistPageHtml(options: ChecklistPageOptions = {}): string {
         <p class="mt-1 text-xs text-surface-500">
           Klik lokasi di gambar kendaraan untuk menandai. Isi catatan bila perlu, lalu klik Catat.
         </p>
-        <div class="mt-3 grid gap-3 md:grid-cols-[0.7fr_1fr_1fr]">
-          ${damageViewHtml('ATAS', 'mx-auto flex h-full w-full max-w-64 flex-col justify-center md:row-span-2 md:max-w-none')}
-          ${damageViewHtml('KIRI')}
-          ${damageViewHtml('KANAN')}
-          ${damageViewHtml('DEPAN')}
-          ${damageViewHtml('BELAKANG')}
+        <div class="mt-3 flex flex-col items-center gap-2 sm:flex-row sm:items-center">
+          <div class="text-center sm:w-1/3">
+            <div class="flex h-80 items-center justify-center rounded-xl border border-surface-200 bg-white p-1">
+              <canvas id="ck-cv-ATAS" width="330" height="706" data-view="ATAS" class="block h-auto max-h-full w-auto max-w-full cursor-crosshair rounded-lg"></canvas>
+            </div>
+            <div class="mt-1 text-xs font-semibold tracking-wide text-surface-600">ATAS</div>
+          </div>
+          <div class="grid flex-1 grid-cols-2 gap-2">
+            ${damageViewHtml('KIRI')}
+            ${damageViewHtml('KANAN')}
+            ${damageViewHtml('DEPAN')}
+            ${damageViewHtml('BELAKANG')}
+          </div>
         </div>
         <div class="mt-3 flex flex-wrap items-center gap-2">
           <input id="ck-sisiCatatan" type="text" class="field w-auto flex-1 py-1.5 text-xs" placeholder="Catatan kerusakan (opsional)">
-          <button class="btn-slate" type="button" data-action="ck-catat">Catat penanda</button>
+          ${actionBtn('add-mark')}
           <span id="ck-pendingHint" class="text-[11px] text-surface-400">Klik gambar untuk memilih lokasi.</span>
         </div>
         <div class="mt-3 text-sm">
@@ -204,12 +216,8 @@ export function checklistPageHtml(options: ChecklistPageOptions = {}): string {
 
       <div class="card p-4 sm:p-6">
         <div class="flex flex-wrap items-center gap-3">
-          ${options.hidePrint ? '' : '<button class="btn-slate" type="button" data-action="ck-print">Cetak</button>'}
-          <button id="ck-simpan" class="btn-primary" type="button" data-action="ck-save">
-            <svg class="inline w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-            Simpan
-          </button>
-          <span id="ck-loading" class="hidden text-sm text-surface-500">Sedang menyimpan...</span>
+          ${options.hidePrint ? '' : actionBtn('print')}
+          ${actionBtn('save', { attrs: 'id="ck-simpan"' })}
         </div>
         <div id="ck-hasil" class="mt-4"></div>
       </div>
@@ -406,7 +414,7 @@ function renderMarks(): void {
     .map(
       (mark, index) => `<li class="flex items-center justify-between gap-2 rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-xs">
       <span class="break-words">${esc(mark.view)} (${esc(mark.x)}%, ${esc(mark.y)}%)${mark.catatan ? ` - ${esc(mark.catatan)}` : ""}</span>
-      <button type="button" class="btn-slate text-red-600" data-action="ck-delMark" data-id="${index}">Hapus</button>
+      ${actionBtn('delete', { id: index })}
     </li>`,
     )
     .join("");
@@ -720,9 +728,7 @@ export async function save(): Promise<void> {
   };
 
   const saveButton = $<HTMLButtonElement>("ck-simpan");
-  const loading = $("ck-loading");
-  if (saveButton) saveButton.disabled = true;
-  loading?.classList.remove("hidden");
+  setBusy(saveButton, true);
 
   try {
     const result = await api.saveCk(payload);
@@ -746,8 +752,7 @@ export async function save(): Promise<void> {
     showMsg(friendly, true);
     showNoticeDialog({ title: "Checklist belum tersimpan", message: friendly, tone: "error", buttonLabel: "Periksa lagi" });
   } finally {
-    if (saveButton) saveButton.disabled = false;
-    loading?.classList.add("hidden");
+    setBusy(saveButton, false);
   }
 }
 
@@ -764,7 +769,7 @@ function showResult(result: CkSaveResult): void {
     ${item.linkPdf && item.linkPdf !== "-" ? ` - <a class="font-semibold underline" target="_blank" rel="noopener" href="${esc(item.linkPdf)}">Buka / Cetak PDF Checklist</a>` : ""}
     ${result.hasRusak ? '<div class="mt-1 font-bold">Ada item rusak.</div>' : ""}
     <div class="mt-2">${esc(result.message || "Checklist tersimpan. PDF siap dicetak.")}</div>
-    <button class="btn-slate mt-3" type="button" data-action="ck-reset">Formulir baru</button>
+    ${actionBtn('reset', { extra: 'mt-3' })}
   </div>`;
 }
 
@@ -797,111 +802,6 @@ export function reset(): void {
   semuaBaik();
   paint();
   showMsg("");
-}
-
-/* ---------- Cetak ---------- */
-
-export function printRow(sigs?: Signatures): void {
-  const kendaraan = $<HTMLInputElement>("ck-kendaraan")?.value ?? "";
-  const driver = $<HTMLInputElement>("ck-driver")?.value ?? "";
-  const tanggal = $<HTMLInputElement>("ck-tanggal")?.value ?? "";
-  const kilometer = $<HTMLInputElement>("ck-kilometer")?.value ?? "";
-  const bbmMasuk = $<HTMLSelectElement>("ck-bbmMasuk")?.value ?? "";
-  const bbmKeluar = $<HTMLSelectElement>("ck-bbmKeluar")?.value ?? "";
-  const keterangan = $<HTMLInputElement>("ck-keterangan")?.value ?? "";
-  const diperiksaOleh = $<HTMLInputElement>("ck-diperiksaOleh")?.value ?? "";
-  const counter = $<HTMLInputElement>("ck-counter")?.value ?? "";
-  const tipeMobil = $<HTMLInputElement>("ck-tipeMobil")?.value ?? "";
-
-  print.show('checklist');
-  print.set('pc-counter', counter);
-  print.set('pc-tipe', tipeMobil);
-  print.set('pc-driver', driver);
-  print.set('pc-tanggal', tanggal);
-  print.set('pc-nopol', kendaraan);
-  print.set('pc-km', kilometer);
-  print.set('pc-bbmMasuk', bbmMasuk);
-  print.set('pc-bbmKeluar', bbmKeluar);
-  print.set('pc-keterangan', keterangan);
-  const ttd = sigs?.diperiksa;
-  print.set('pc-diperiksa', ttd?.name || diperiksaOleh);
-  const ttdEl = document.getElementById("pc-ttd");
-  if (ttdEl) ttdEl.innerHTML = ttd?.image ? `<img src="${ttd.image}" alt="" style="height:40px">` : "";
-
-  const itemsBox = document.getElementById('pc-items');
-  if (itemsBox) {
-    const groups: Record<string, any[]> = {};
-    const order: string[] = [];
-    for (const row of itemRows()) {
-      const grup = row.dataset.grup ?? "";
-      const item = row.dataset.item ?? "";
-      const status = row.querySelector<HTMLInputElement>('input[data-status]:checked')?.dataset.status ?? "Baik";
-      const catatan = row.querySelector<HTMLInputElement>('[data-catatan]')?.value ?? "";
-      if (!groups[grup]) { groups[grup] = []; order.push(grup); }
-      groups[grup].push({ item, status, catatan });
-    }
-    let html = "";
-    for (const g of order) {
-      html += `<div style="margin:4px 0;font-weight:bold">${esc(g)} :</div>`;
-      const items = groups[g] ?? [];
-      for (const it of items) {
-        let line = `  ${esc(it.item)} : ${esc(it.status)}`;
-        if (it.status === 'Rusak' && it.catatan) line += ` (Rusak: ${esc(it.catatan)})`;
-        html += `<div>${line}</div>`;
-      }
-    }
-    itemsBox.innerHTML = html;
-  }
-
-  const dmgBox = document.getElementById('pc-damages');
-  if (dmgBox) {
-    const views = ['ATAS','KIRI','KANAN','DEPAN','BELAKANG'];
-    let html = "";
-    for (const v of views) {
-      html += `<div style="margin:4px 0"><b>${v}</b>: `;
-      if (marks.length) {
-        marks.forEach((m) => {
-          html += `<span style="color:red;font-weight:bold">✗</span> (${m.x},${m.y}) ${esc(m.catatan)} `;
-        });
-      } else {
-        html += '-';
-      }
-      html += '</div>';
-      html += `<div style="position:relative;display:inline-block;margin:4px 0"><img src="./ck-${v.toLowerCase()}.webp" style="max-width:200px;height:auto" alt="${v}">`;
-      marks.forEach((m) => {
-        html += `<span style="position:absolute;left:${m.x}%;top:${m.y}%;color:red;font-weight:bold;font-size:14px;transform:translate(-50%,-50%)">✗</span>`;
-      });
-      html += '</div><br>';
-    }
-    dmgBox.innerHTML = html;
-  }
-
-  print.run();
-}
-
-/** Daftar checklist yang sudah disimpan */
-export function renderList(): void {
-  const tbody = $('checklist-tbody');
-  const cards = $('checklist-cards');
-  if (!tbody || !cards) return;
-
-  if (!store.checklist.length) {
-    tbody.innerHTML = emptyRow(6, 'Tidak ada data checklist.');
-    cards.innerHTML =
-      `<div class="card p-8 text-center text-sm text-surface-400">Tidak ada data checklist.</div>`;
-    must('ck-count').textContent = `0 dari ${store.checklist.length} checklist`;
-    return;
-  }
-
-  tbody.innerHTML = store.checklist
-    .map((item) => '<tr class="cursor-pointer border-b border-surface-100 hover:bg-surface-100"\n        data-action="dr-open" data-id="' + item.rowId + '">\n        <td class="px-4 py-3 text-sm font-bold whitespace-nowrap">' + (item.noDok || 'Form #' + item.rowId) + '</td>\n        <td class="px-4 py-3 text-sm whitespace-nowrap">' + (item.tanggal || '') + '</td>\n        <td class="px-4 py-3 text-sm font-semibold whitespace-nowrap">' + (item.driver || '') + '</td>\n        <td class="px-4 py-3 text-sm whitespace-nowrap">' + (item.kendaraan || '') + '</td>\n        <td class="min-w-48 px-4 py-3 text-sm">' + (item.keterangan || '') + '</td>\n        <td class="sticky-col px-4 py-3 text-right whitespace-nowrap">\n          <div class="inline-flex gap-1.5">\n            <button class="btn-slate" data-action="dr-open" data-id="' + item.rowId + '">Detail</button>\n            <button class="btn-primary" data-action="dr-pdf" data-id="' + item.rowId + '">' + icon('print') + ' PDF</button>\n          </div>\n        </td>\n      </tr>')
-    .join('');
-
-  cards.innerHTML = store.checklist
-    .map((item) => '<div class="card p-4" data-action="dr-open" data-id="' + item.rowId + '">\n        <div class="flex items-start justify-between gap-2">\n          <div class="min-w-0">\n            <div class="text-xs font-bold text-primary-700 break-words">' + (item.noDok || 'Form #' + item.rowId) + '</div>\n            <div class="text-[11px] text-surface-400">' + (item.tanggal || '') + ' · ' + (item.driver || '') + '</div>\n          </div>\n          <div class="mt-2">\n            <div class="font-bold break-words">' + esc(orDash(item.keterangan)) + '</div>\n          </div>\n        </div>\n      </div>')
-    .join('');
-
-  must('ck-count').textContent = store.checklist.length + ' dari ' + store.checklist.length + ' checklist';
 }
 
 /* ---------- Bantuan DOM ---------- */

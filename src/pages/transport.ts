@@ -16,22 +16,30 @@ import {
 import { store } from '../store';
 import {
   $,
+  actionBtn,
+  actionCell,
+  cardActions,
   debounce,
   drawer,
+  emptyCard,
   emptyRow,
+  errorText,
   esc,
   field$,
   formField,
-  icon,
   loadingRow,
+  MSG,
+  tableHead,
   orDash,
   print,
   readForm,
   must,
+  report,
   signatureHtml,
   type Signatures,
   statusBadge,
   toast,
+  validateRequired,
 } from '../ui';
 
 const COL_LABEL: Record<(typeof TRANSPORT_COLUMNS)[number], string> = {
@@ -73,32 +81,28 @@ export function renderList(): void {
 
   if (!rows.length) {
     tbody.innerHTML = emptyRow(TRANSPORT_COLUMNS.length + 1, 'Tidak ada permintaan yang cocok.');
-    cards.innerHTML =
-      `<div class="card p-8 text-center text-sm text-surface-400">Tidak ada permintaan yang cocok.</div>`;
+    cards.innerHTML = emptyCard('Tidak ada permintaan yang cocok.');
     must('count').textContent = `${rows.length} dari ${store.transport.length} permintaan`;
     return;
   }
 
   tbody.innerHTML = rows
     .map(
-      (item) => `<tr class="cursor-pointer border-b border-surface-100 hover:bg-surface-100"
-      data-action="open" data-id="${item.rowId}">
+      (item) => `<tr data-action="detail" data-id="${item.rowId}">
       ${TRANSPORT_COLUMNS.map((key) => cell(item, key)).join('')}
-      <td class="sticky-col px-4 py-3 text-right whitespace-nowrap">
-        <div class="inline-flex gap-1.5">
-          <button class="btn-amber" data-action="open" data-id="${item.rowId}">Edit</button>
-          <button class="btn-slate" data-action="print" data-id="${item.rowId}">Cetak</button>
-          <button class="btn-blue" data-action="email" data-id="${item.rowId}">Email</button>
-          <button class="btn-slate text-red-600" data-action="delete" data-id="${item.rowId}">Hapus</button>
-        </div>
-      </td>
+      ${actionCell(
+        actionBtn('detail', { id: item.rowId }),
+        actionBtn('print', { id: item.rowId }),
+        actionBtn('email', { id: item.rowId }),
+        actionBtn('delete', { id: item.rowId }),
+      )}
     </tr>`,
     )
     .join('');
 
   cards.innerHTML = rows
     .map(
-      (item) => `<div class="card p-4" data-action="open" data-id="${item.rowId}">
+      (item) => `<div class="card p-4" data-action="detail" data-id="${item.rowId}">
       <div class="flex items-start justify-between gap-2">
         <div class="min-w-0">
           <div class="text-xs font-bold text-primary-700 break-words">${esc(item.noSurat)}</div>
@@ -118,12 +122,12 @@ export function renderList(): void {
         ${esc(item.tglJam)} ·
         <span class="font-mono uppercase font-semibold">${esc(item.nopol)}</span>
       </div>
-      <div class="mt-3 grid grid-cols-4 gap-1.5">
-        <button class="btn-amber" data-action="open" data-id="${item.rowId}">Edit</button>
-        <button class="btn-slate" data-action="print" data-id="${item.rowId}">Cetak</button>
-        <button class="btn-blue" data-action="email" data-id="${item.rowId}">Email</button>
-        <button class="btn-slate text-red-600" data-action="delete" data-id="${item.rowId}">Hapus</button>
-      </div>
+      ${cardActions(
+        actionBtn('detail', { id: item.rowId }),
+        actionBtn('print', { id: item.rowId }),
+        actionBtn('email', { id: item.rowId }),
+        actionBtn('delete', { id: item.rowId }),
+      )}
     </div>`,
     )
     .join('');
@@ -151,10 +155,10 @@ function cell(item: TransportItem, key: TransportKey): string {
 export function renderHeader(): void {
   const thead = $('thead');
   if (!thead) return;
-  thead.innerHTML = `<tr class="bg-surface-50 text-[11px] font-bold tracking-wider text-surface-500 uppercase">
-    ${TRANSPORT_COLUMNS.map((key) => `<th class="px-4 py-3.5 whitespace-nowrap">${esc(COL_LABEL[key])}</th>`).join('')}
-    <th class="px-4 py-3.5 text-right whitespace-nowrap">Aksi</th>
-  </tr>`;
+  thead.innerHTML = tableHead([
+    ...TRANSPORT_COLUMNS.map((key) => ({ label: COL_LABEL[key] })),
+    { label: 'Aksi', className: 'text-right' },
+  ]);
 }
 
 export function renderFilters(): void {
@@ -168,7 +172,9 @@ export function renderFilters(): void {
 
 export async function refresh(): Promise<void> {
   const tbody = $('tbody');
+  const cards = $('cards');
   if (tbody) tbody.innerHTML = loadingRow(TRANSPORT_COLUMNS.length + 1);
+  if (cards) cards.innerHTML = '';
   try {
     const page = await api.listRequests();
     store.transport = page.items;
@@ -177,7 +183,8 @@ export async function refresh(): Promise<void> {
   } catch (error) {
     report(error);
     const el = $('tbody');
-    if (el) el.innerHTML = emptyRow(TRANSPORT_COLUMNS.length + 1, message(error));
+    if (el) el.innerHTML = emptyRow(TRANSPORT_COLUMNS.length + 1, errorText(error));
+    if (cards) cards.innerHTML = emptyCard(errorText(error));
   }
 }
 
@@ -202,12 +209,10 @@ export function openDrawer(rowId: number): void {
       }`,
     footer: `
       <div class="flex gap-2">
-        <button class="btn-slate px-4 py-2" data-action="print" data-id="${rowId}" data-from="drawer">
-          ${icon('print')} Cetak Dokumen
-        </button>
-        <button class="btn-blue px-4 py-2" data-action="email" data-id="${rowId}">Email</button>
+        ${actionBtn('print', { id: rowId, extra: 'px-4 py-2', attrs: 'data-from="drawer"' })}
+        ${actionBtn('email', { id: rowId, extra: 'px-4 py-2' })}
       </div>
-      <button class="btn-primary" data-action="save" data-id="${rowId}">Simpan Perubahan</button>`,
+      ${actionBtn('save', { id: rowId })}`,
   });
 }
 
@@ -226,21 +231,18 @@ export async function save(rowId: number): Promise<void> {
   const item = store.transport.find((i) => i.rowId === rowId);
   if (!item) return;
 
+  if (!validateRequired([
+    { id: 'f-nama', label: 'Nama' },
+    { id: 'f-tujuan', label: 'Tujuan' },
+  ])) return;
+
   const patch = readForm<Record<string, string>>(TRANSPORT_FIELDS);
-  if (!patch.nama) {
-    toast('Nama wajib diisi.', 'error');
-    return;
-  }
-  if (!patch.tujuan) {
-    toast('Tujuan wajib diisi.', 'error');
-    return;
-  }
 
   drawer.close();
-  toast('Menyimpan...');
+  toast(MSG.saving);
   try {
     await api.updateRequest({ rowId, sig: item.sig, ...patch });
-    toast('Tersimpan');
+    toast(MSG.saved);
     await refresh();
   } catch (error) {
     report(error);
@@ -325,22 +327,22 @@ export function openCreate(): void {
     body: `<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
       ${TRANSPORT_FIELDS.map((f) => formField(f, f.key === 'status' ? 'Pending' : '')).join('')}
     </div>`,
-    footer: `<button class="btn-primary" data-action="create">Simpan Permintaan</button>`,
+    footer: actionBtn('create'),
   });
 }
 
 export async function create(): Promise<void> {
+  const checks = TRANSPORT_FIELDS.filter((field) => field.required).map((field) => ({
+    id: `f-${field.key}`,
+    label: field.label,
+  }));
+  if (!validateRequired(checks)) return;
+
   const form = readForm<Record<string, string>>(TRANSPORT_FIELDS);
-  for (const field of TRANSPORT_FIELDS) {
-    if (field.required && !form[field.key]) {
-      toast(`${field.label} wajib diisi.`, 'error');
-      return;
-    }
-  }
   drawer.close();
   try {
     await api.createRequest(form);
-    toast('Permintaan tersimpan');
+    toast('Permintaan tersimpan.');
     await refresh();
   } catch (error) {
     report(error);
@@ -407,11 +409,3 @@ function todayLong(): string {
   });
 }
 
-export function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-export function report(error: unknown): void {
-  console.error(error);
-  toast(message(error), 'error');
-}

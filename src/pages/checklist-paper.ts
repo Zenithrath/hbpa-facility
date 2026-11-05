@@ -7,6 +7,7 @@
 import type { CkHeader, CkItem } from '../schema';
 import type { Signatures } from '../ui';
 import { esc, signatureHtml } from '../ui';
+import { CAR_SVG } from './checklist-canvas';
 
 const W = 595.28;
 const H = 841.89;
@@ -170,12 +171,15 @@ export function renderChecklistPaper(doc: CkHeader | undefined, item: { rowId: n
   });
 
   // Car images
-  const carDefs: { name: string; label: string; x: number; yTop: number; w: number }[] = [
-    { name: 'atas', label: 'ATAS', x: 49, yTop: 368, w: 95 },
-    { name: 'kiri', label: 'KIRI', x: 165, yTop: 396, w: 180 },
-    { name: 'kanan', label: 'KANAN', x: 370, yTop: 396, w: 180 },
-    { name: 'depan', label: 'DEPAN', x: 191, yTop: 294, w: 128 },
-    { name: 'belakang', label: 'BELAKANG', x: 396, yTop: 294, w: 128 },
+  const carDefs: { label: string; x: number; yTop: number; w: number }[] = [
+    // Lebar disesuaikan dengan rasio SVG baru supaya kelima tampilan
+    // seimbang; x digeser agar titik tengah tiap gambar tetap di bawah
+    // labelnya (lihat viewLabelPos).
+    { label: 'ATAS', x: 49, yTop: 368, w: 95 },
+    { label: 'KIRI', x: 165, yTop: 396, w: 180 },
+    { label: 'KANAN', x: 370, yTop: 396, w: 180 },
+    { label: 'DEPAN', x: 191, yTop: 294, w: 128 },
+    { label: 'BELAKANG', x: 396, yTop: 294, w: 128 },
   ];
   const viewLabelPos: Record<string, { x: number; y: number }> = {
     ATAS: { x: 96, y: 374 },
@@ -191,7 +195,8 @@ export function renderChecklistPaper(doc: CkHeader | undefined, item: { rowId: n
     const marksForView = damages.filter((m) => (m.view || '').toUpperCase() === lbl);
     const wrapTop = H - c.yTop;
     html += `<div class="ck-carwrap" style="left:${pt(c.x)};top:${pt(wrapTop)};width:${pt(c.w)}">`;
-    html += `<img class="ck-car" src="./ck-${c.name}.webp" alt="${esc(lbl)}">`;
+    // Sumber gambar sama dengan kanvas input supaya hasil cetak identik.
+    html += `<img class="ck-car" src="${CAR_SVG[lbl] ?? ''}" alt="${esc(lbl)}">`;
     marksForView.forEach((m) => {
       html += `<span class="ck-mark" style="left:${m.x}%;top:${m.y}%">\u00D7</span>`;
       if (m.catatan) {
@@ -214,19 +219,5 @@ export function renderChecklistPaper(doc: CkHeader | undefined, item: { rowId: n
 
   html += `</div>`;
 
-  // wrap with style
-  const style = `<style>
-.ck-paper{position:relative;width:${pt(W)};height:${pt(H)};background:#fff;margin:0 auto;font-family:Helvetica,Arial,sans-serif;color:#000;font-size:8pt;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.35);}
-.ck-paper .ck-r{position:absolute;border:.7pt solid #000;}
-.ck-paper .ck-l{position:absolute;height:0;border-top:.7pt solid #000;}
-.ck-paper .ck-t{position:absolute;white-space:nowrap;line-height:1;}
-.ck-paper .ck-g{position:absolute;display:block;overflow:visible;}
-.ck-paper .ck-carwrap{position:absolute;}
-.ck-paper .ck-car{width:100%;height:auto;display:block;}
-.ck-paper .ck-mark{position:absolute;color:#dc2626;font-weight:bold;font-size:12pt;transform:translate(-50%,-50%);}
-.ck-paper .ck-marknote{position:absolute;color:#dc2626;font-size:7pt;transform:translate(-50%,0);white-space:nowrap;}
-.ck-paper .ck-ket,.ck-paper .ck-ttd{position:absolute;font-size:9pt;white-space:pre-wrap;word-break:break-word;line-height:1;}
-</style>`;
-
-  return style + html;
+  return html;
 }

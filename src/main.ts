@@ -9,14 +9,34 @@ import './styles.css';
 import { api, invalidateAll } from './api';
 import { CONFIG } from './config';
 import { store } from './store';
-import { $, askSignature, drawer, esc, field$, icon, must, toast } from './ui';
+import {
+  $,
+  actionBtn,
+  askSignature,
+  drawer,
+  esc,
+  field$,
+  icon,
+  must,
+  searchBar,
+  setPageLoading,
+  tableHead,
+  toast,
+} from './ui';
 import * as overview from './pages/overview';
 import * as transport from './pages/transport';
 import * as inventaris from './pages/inventaris';
 import * as dailyReport from './pages/daily-report';
-import { checklistListPage, openDetail as clOpenDetail, printChecklist as clPrintChecklist } from './pages/checklist-list';
+import {
+  checklistListPage,
+  openDetail as clOpenDetail,
+  printChecklist as clPrintChecklist,
+  remove as clRemove,
+  saveEdit as clSaveEdit,
+} from './pages/checklist-list';
 import { manpowerRequisitionPage } from './manpower/requisition';
 import { jobCompletionPage } from './manpower/completion';
+import { jcSheetHtml } from './manpower/completion-sheet';
 
 /*****************************************************************
    TEMPLATE
@@ -25,14 +45,9 @@ import { jobCompletionPage } from './manpower/completion';
 const SHELL = `
 <aside id="sidebar"
   class="no-print fixed top-0 left-0 z-40 h-full w-64 -translate-x-full border-r border-surface-200 bg-white transition-transform duration-200 lg:translate-x-0">
-  <div class="flex items-center gap-3 border-b border-surface-100 px-6 py-5">
-    <div class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-surface-200 bg-white p-1">
-      <img src="https://hidup-baru.com/wp-content/uploads/2023/04/cropped-HBPA.png" alt="Logo HBPA" class="h-full w-auto">
-    </div>
-    <div>
-      <h1 class="text-sm leading-tight font-bold">${esc(CONFIG.COMPANY_SHORT)}</h1>
-      <p class="text-[11px] text-surface-400">${esc(CONFIG.APP_NAME)}</p>
-    </div>
+  <div class="flex flex-col items-center gap-2 border-b border-surface-100 px-6 py-5 text-center">
+    <img src="https://hidup-baru.com/wp-content/uploads/2023/04/cropped-HBPA.png" alt="Logo HBPA" class="h-12 w-auto shrink-0">
+    <h1 class="text-sm leading-tight font-bold">${esc(CONFIG.APP_NAME)}</h1>
   </div>
   <nav id="nav" class="space-y-1 px-3 py-4"></nav>
 </aside>
@@ -40,7 +55,7 @@ const SHELL = `
 <div id="scrim" class="no-print fixed inset-0 z-30 hidden bg-black/30 lg:hidden" data-action="close-sidebar"></div>
 
 <main class="lg:ml-64">
-  <header class="no-print sticky top-0 z-20 border-b border-surface-100 bg-white/90 px-4 py-3 backdrop-blur sm:px-6">
+  <header class="no-print sticky top-0 z-20 border-b border-surface-100 bg-white px-4 py-3 sm:px-6">
     <div class="flex items-center justify-between gap-3">
       <div class="flex items-center gap-3">
         <button class="rounded-lg p-2 text-surface-600 hover:bg-surface-100 lg:hidden" data-action="toggle-sidebar">
@@ -48,9 +63,7 @@ const SHELL = `
         </button>
         <h2 id="title" class="text-lg font-bold"></h2>
       </div>
-      <button class="btn-slate px-3.5 py-2" data-action="refresh-all">
-        ${icon('refresh', 'w-3.5 h-3.5 text-primary-600')} <span class="hidden sm:inline">Refresh Data</span>
-      </button>
+      ${actionBtn('refresh', { extra: 'px-3.5 py-2' })}
     </div>
   </header>
 
@@ -59,8 +72,8 @@ const SHELL = `
 </main>
 
 <div id="drawer" class="no-print fixed inset-0 z-50 hidden">
-  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" data-action="close-drawer"></div>
-  <div class="absolute top-0 right-0 flex h-full w-full max-w-lg flex-col bg-white shadow-2xl">
+  <div class="absolute inset-0 bg-black/40" data-action="close-drawer"></div>
+  <div id="drawer-panel" class="absolute top-0 right-0 flex h-full w-full max-w-lg flex-col bg-white shadow-2xl">
     <div class="flex items-center justify-between border-b border-surface-100 bg-surface-50 px-4 py-4 sm:px-6">
       <h3 id="drawer-title" class="text-base font-bold"></h3>
       <button class="rounded-lg p-1.5 text-surface-500 hover:bg-surface-200" data-action="close-drawer">${icon('x', 'w-5 h-5')}</button>
@@ -130,20 +143,18 @@ const OVERVIEW: Page = {
         <div class="space-y-4 p-4 sm:p-6">
           <div>
             <label class="field-label" for="mail-q">Cari Permintaan</label>
-            <input id="mail-q" type="search" class="field" placeholder="Cari nama, no., divisi, tujuan, atau plat...">
+            ${searchBar({ id: 'mail-q', placeholder: 'Cari nama, no., divisi, tujuan, atau plat...', extra: 'mt-1.5' })}
           </div>
           <div class="flex flex-wrap items-center justify-between gap-2">
             <p class="text-xs text-surface-500">Centang yang mau dikirim.
               <span id="email-count" class="font-bold text-emerald-700">0 dipilih</span></p>
             <div class="flex gap-2">
-              <button class="btn-slate px-3 py-1.5" data-action="select-all">Pilih Semua</button>
-              <button class="btn-slate px-3 py-1.5" data-action="select-none">Kosongkan</button>
+              ${actionBtn('select-all')}
+              ${actionBtn('clear')}
             </div>
           </div>
           <div id="email-list" class="max-h-96 divide-y divide-surface-100 overflow-y-auto rounded-xl border border-surface-200"></div>
-          <button class="btn bg-blue-600 px-6 py-2.5 text-sm text-white hover:bg-blue-700" data-action="send-selected">
-            ${icon('mail')} Kirim Email
-          </button>
+          ${actionBtn('send', { extra: 'px-6 py-2.5 text-sm' })}
         </div>
       </div>
     </div>`,
@@ -164,15 +175,12 @@ const OVERVIEW: Page = {
 };
 
 const TRANSPORT_PAGE: Page = {
-  title: 'Daftar Permintaan Transportasi',
+  title: 'Transport Requests',
   icon: 'file',
   html: () => `
     <div class="space-y-4">
       <div class="card flex flex-col gap-3 p-4 sm:flex-row">
-        <div class="relative flex-1">
-          ${icon('search', 'w-4 h-4 text-surface-400 absolute top-1/2 left-3.5 -translate-y-1/2')}
-          <input id="q" type="search" class="field pl-10" placeholder="Cari nama, no., divisi, tujuan, plat...">
-        </div>
+        ${searchBar({ id: 'q', placeholder: 'Cari nama, no., divisi, tujuan, plat...', extra: 'flex-1' })}
         <select id="filter-status" class="field w-auto text-xs font-semibold">
           <option value="">Semua Status</option>
           <option value="Pending">Pending</option>
@@ -181,8 +189,8 @@ const TRANSPORT_PAGE: Page = {
           <option value="Selesai">Selesai</option>
         </select>
         <select id="filter-dept" class="field w-auto text-xs font-semibold"></select>
-        <button class="btn-slate shrink-0" data-action="export">${icon('file')} Ekspor CSV</button>
-        <button class="btn-primary shrink-0" data-action="create-new">${icon('plus')} Permintaan Baru</button>
+        ${actionBtn('export', { extra: 'shrink-0' })}
+        ${actionBtn('new', { extra: 'shrink-0' })}
       </div>
 
       <p id="count" class="text-[11px] text-surface-400"></p>
@@ -191,7 +199,7 @@ const TRANSPORT_PAGE: Page = {
 
       <div class="card hidden overflow-hidden md:block">
         <div class="overflow-x-auto">
-          <table class="w-full border-collapse text-left text-sm">
+          <table class="table">
             <thead id="thead"></thead>
             <tbody id="tbody"></tbody>
           </table>
@@ -207,33 +215,14 @@ const TRANSPORT_PAGE: Page = {
 };
 
 const INVENTARIS_PAGE: Page = {
-  title: 'Peminjaman Inventaris Barang',
+  title: 'Inventory Borrowing',
   icon: 'box',
   html: () => `
     <div class="space-y-4">
       <div id="inv-error" class="hidden rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"></div>
 
-      <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        ${[
-          ['i-total', 'Total Peminjaman'],
-          ['i-dipinjam', 'Sedang Dipinjam'],
-          ['i-overdue', 'Lewat Tanggal Kembali'],
-          ['i-selesai', 'Sudah Dikembalikan'],
-        ]
-          .map(
-            ([id, label]) => `<div class="card p-4 sm:p-5">
-          <p id="${id}" class="text-2xl font-black sm:text-3xl">0</p>
-          <p id="${id}-label" class="mt-0.5 text-xs font-medium text-surface-400">${esc(label)}</p>
-        </div>`,
-          )
-          .join('')}
-      </div>
-
       <div class="card flex flex-col gap-3 p-4 sm:flex-row">
-        <div class="relative flex-1">
-          ${icon('search', 'w-4 h-4 text-surface-400 absolute top-1/2 left-3.5 -translate-y-1/2')}
-          <input id="inv-q" type="search" class="field pl-10" placeholder="Cari nama, no. dokumen, kontak, atau barang...">
-        </div>
+        ${searchBar({ id: 'inv-q', placeholder: 'Cari nama, no. dokumen, kontak, atau barang...', extra: 'flex-1' })}
         <select id="inv-status" class="field w-auto text-xs font-semibold">
           <option value="">Semua Status</option>
           <option value="Dipinjam">Dipinjam</option>
@@ -248,19 +237,20 @@ const INVENTARIS_PAGE: Page = {
 
       <div class="card hidden overflow-hidden md:block">
         <div class="overflow-x-auto">
-          <table class="w-full border-collapse text-left text-sm">
-            <thead class="bg-surface-50 text-[11px] font-bold tracking-wider text-surface-500 uppercase">
-              <tr>
-                <th class="px-4 py-3.5 whitespace-nowrap">No. Dokumen</th>
-                <th class="px-4 py-3.5 whitespace-nowrap">Nama</th>
-                <th class="px-4 py-3.5 whitespace-nowrap">Kontak</th>
-                <th class="px-4 py-3.5 min-w-56">Barang</th>
-                <th class="px-4 py-3.5 whitespace-nowrap">Tgl Pinjam</th>
-                <th class="px-4 py-3.5 whitespace-nowrap">Rencana Kembali</th>
-                <th class="px-4 py-3.5 min-w-40">Keperluan</th>
-                <th class="px-4 py-3.5 whitespace-nowrap">Tgl Kembali Aktual</th>
-                <th class="px-4 py-3.5 text-right whitespace-nowrap">Aksi</th>
-              </tr>
+          <table class="table">
+            <thead>
+              ${tableHead([
+                { label: 'No. Dokumen' },
+                { label: 'Nama' },
+                { label: 'Kontak' },
+                { label: 'Barang', className: 'min-w-56' },
+                { label: 'Tgl Pinjam' },
+                { label: 'Rencana Kembali' },
+                { label: 'Keperluan', className: 'min-w-40' },
+                { label: 'Status' },
+                { label: 'Tgl Kembali Aktual' },
+                { label: 'Aksi', className: 'text-right' },
+              ])}
             </thead>
             <tbody id="inv-tbody"></tbody>
           </table>
@@ -275,15 +265,12 @@ const INVENTARIS_PAGE: Page = {
 };
 
 const DAILY_REPORT_PAGE: Page = {
-  title: 'Surat Tugas / Daily Report',
+  title: 'Assignment Letter / Daily Report',
   icon: 'file',
   html: () => `
     <div class="space-y-4">
       <div class="card flex flex-col gap-3 p-4 sm:flex-row">
-        <div class="relative flex-1">
-          ${icon('search', 'w-4 h-4 text-surface-400 absolute top-1/2 left-3.5 -translate-y-1/2')}
-          <input id="dr-q" type="search" class="field pl-10" placeholder="Cari driver, tanggal, no. plat, atau uraian...">
-        </div>
+        ${searchBar({ id: 'dr-q', placeholder: 'Cari driver, tanggal, no. plat, atau uraian...', extra: 'flex-1' })}
       </div>
 
       <div class="flex flex-wrap items-center justify-between gap-2">
@@ -295,16 +282,16 @@ const DAILY_REPORT_PAGE: Page = {
 
       <div class="card hidden overflow-hidden md:block">
         <div class="overflow-x-auto">
-          <table class="w-full border-collapse text-left text-sm">
-            <thead class="bg-surface-50 text-[11px] font-bold tracking-wider text-surface-500 uppercase">
-              <tr>
-                <th class="px-4 py-3.5 whitespace-nowrap">No. Dokumen</th>
-                <th class="px-4 py-3.5 whitespace-nowrap">Hari / Tanggal</th>
-                <th class="px-4 py-3.5 whitespace-nowrap">Driver</th>
-                <th class="px-4 py-3.5 whitespace-nowrap">No. Plat</th>
-                <th class="px-4 py-3.5 min-w-48">Uraian</th>
-                <th class="px-4 py-3.5 text-right whitespace-nowrap">Aksi</th>
-              </tr>
+          <table class="table">
+            <thead>
+              ${tableHead([
+                { label: 'No. Dokumen' },
+                { label: 'Hari / Tanggal' },
+                { label: 'Driver' },
+                { label: 'No. Plat' },
+                { label: 'Uraian', className: 'min-w-48' },
+                { label: 'Aksi', className: 'text-right' },
+              ])}
             </thead>
             <tbody id="dr-tbody"></tbody>
           </table>
@@ -331,7 +318,7 @@ const PAGES = {
 type PageKey = keyof typeof PAGES;
 
 const NAV_SECTIONS = [
-  { label: 'FACILITY', pages: ['overview', 'transport', 'inventaris', 'daily', 'checklist-list'] },
+  { label: 'PEMINJAMAN', pages: ['overview', 'transport', 'inventaris', 'daily', 'checklist-list'] },
   { label: 'MANPOWER', pages: ['manpower-requisition', 'job-completion'] },
 ] as const satisfies ReadonlyArray<{ label: string; pages: readonly PageKey[] }>;
 
@@ -525,27 +512,32 @@ const PRINT_AREAS = `
 
 <div id="print-manpower-requisition" class="hidden">
   <style>
-    .mpr-paper{box-sizing:border-box;width:100%;min-height:200mm;background:#fff;color:#000;font-family:Calibri,Carlito,'Segoe UI',Arial,sans-serif;font-size:8.5pt;padding:4mm 5mm;border:1.2pt solid #000;}
+    .mpr-paper{box-sizing:border-box;width:100%;height:205mm;background:#fff;color:#000;font-family:Calibri,Carlito,'Segoe UI',Arial,sans-serif;font-size:8.5pt;padding:6mm 0 0;border:1.2pt solid #000;display:flex;flex-direction:column;overflow:hidden;break-inside:avoid;page-break-inside:avoid;}
     .mpr-paper *{box-sizing:inherit}
-    .mpr-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;min-height:15mm}
-    .mpr-logo img{height:12mm;width:auto;max-width:38mm;object-fit:contain}
-    .mpr-title{text-align:center;white-space:nowrap;font-size:12.5pt;line-height:1.25;font-weight:800;text-decoration:underline;text-underline-offset:1mm;letter-spacing:.1px}
-    .mpr-info{display:grid;grid-template-columns:35mm 2mm 1fr;row-gap:3mm;margin:4mm 4mm 0;align-items:end}
+    /* Sama seperti .content-pad di drawer: isi yang kepanjangan dipotong di
+       sini, sehingga kolom tanda tangan tetap di bawah dan tidak terdorong. */
+    .mpr-body{flex:1 1 auto;min-height:0;overflow:hidden;padding:0 7mm}
+    .mpr-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;min-height:9mm;margin-bottom:7mm}
+    .mpr-logo img{height:8.5mm;width:auto;max-width:26mm;object-fit:contain}
+    .mpr-title{text-align:center;white-space:nowrap;font-size:11pt;font-weight:800;text-decoration:underline;text-underline-offset:0.8mm}
+    .mpr-info{display:grid;grid-template-columns:36mm 2mm 1fr;row-gap:2.4mm;margin:2mm 0 0 2mm;align-items:end}
     .mpr-label{font-size:8pt;font-weight:800;text-transform:uppercase}
-    .mpr-line{display:block;min-height:1.25em;padding:0 .5mm;border-bottom:1px dotted #000;line-height:1.35}
-    .mpr-outline-title{margin:5mm 4mm 2mm;font-size:8pt;font-weight:800;text-transform:uppercase}
-    .mpr-outline{display:grid;grid-template-columns:6mm 1fr;row-gap:2mm;margin:0 4mm;align-items:end}
-    .mpr-outline .no{text-align:right;padding-right:1mm;font-weight:700}
-    .mpr-outline .line{min-height:5mm;display:flex;align-items:flex-end;border-bottom:1px dotted #000;padding-bottom:.4mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .mpr-approval{display:grid;grid-template-columns:repeat(3,1fr);border-top:1.2pt solid #000;margin-top:5mm}
+    .mpr-line{display:block;min-height:1.35em;padding:0 1mm;border-bottom:1px dotted #000;line-height:1.3}
+    .mpr-outline-title{margin:4mm 0 1.6mm 2mm;font-size:8pt;font-weight:800;text-transform:uppercase}
+    .mpr-outline{display:grid;grid-template-columns:6mm 1fr;row-gap:1.4mm;margin:0 0 0 1mm;align-items:start}
+    .mpr-outline .no{text-align:right;padding-right:1mm;font-weight:700;line-height:1.16;margin-top:.1mm}
+    .mpr-outline .line{min-height:3.4mm;display:block;border-bottom:1px dotted #000;padding:0 1mm .05mm;line-height:1.16;white-space:normal;overflow-wrap:anywhere;word-break:break-word}
+    .mpr-approval{display:grid;grid-template-columns:repeat(3,1fr);border-top:1.2pt solid #000;flex:0 0 auto}
     .mpr-approval .col{border-right:1.2pt solid #000;display:flex;flex-direction:column;min-width:0}
     .mpr-approval .col:last-child{border-right:0}
-    .mpr-approval .hd{text-align:center;font-weight:800;height:6mm;line-height:6mm;border-bottom:1.2pt solid #000;font-size:8pt}
-    .mpr-approval .box{height:24mm;display:flex;align-items:flex-end;justify-content:center;padding:1mm;overflow:hidden}
-    .mpr-approval .nm{border-top:1.2pt solid #000;padding:1mm 1.5mm;line-height:5.2mm;font-size:7pt}
-    .mpr-approval .inline-line{display:inline-block;min-width:55%;border-bottom:1px dotted #000;padding:0 .5mm}
+    .mpr-approval .hd{text-align:center;font-weight:800;height:5.6mm;line-height:5.6mm;border-bottom:1.2pt solid #000;font-size:8pt}
+    .mpr-approval .box{height:16mm;display:flex;align-items:center;justify-content:center;padding:1mm;overflow:hidden}
+    .mpr-approval .box img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}
+    .mpr-approval .nm{border-top:1.2pt solid #000;padding:0.6mm 1.2mm 0.8mm;line-height:4.6mm;font-size:7.6pt}
+    .mpr-approval .inline-line{display:inline-block;min-width:55%;border-bottom:1px dotted #000;padding:0 1mm}
   </style>
   <main class="mpr-paper">
+    <div class="mpr-body">
     <header class="mpr-head">
       <div class="mpr-logo"><img src="https://hidup-baru.com/wp-content/uploads/2023/04/cropped-HBPA.png" alt="Hidup Baru" referrerpolicy="no-referrer"></div>
       <div class="mpr-title">MANPOWER REQUISITION FORM</div>
@@ -572,6 +564,7 @@ const PRINT_AREAS = `
       <div class="no">9.</div><div id="mpr-outline-9" class="line"></div>
       <div class="no">10.</div><div id="mpr-outline-10" class="line"></div>
     </section>
+    </div>
 
     <footer class="mpr-approval">
       <div class="col">
@@ -593,85 +586,7 @@ const PRINT_AREAS = `
   </main>
 </div>
 
-<div id="print-job-completion" class="hidden">
-  <style>
-    .jc-paper{box-sizing:border-box;width:100%;min-height:285mm;margin:0 auto;background:#fff;color:#000;font-family:Calibri,Carlito,'Segoe UI',Arial,sans-serif;font-size:10pt;padding:8mm 10mm;}
-    .jc-paper *{box-sizing:inherit}
-    .jc-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;min-height:16mm}
-    .jc-logo img{height:14mm;width:auto;max-width:48mm;object-fit:contain}
-    .jc-title{text-align:center;white-space:nowrap;font-size:16pt;font-weight:800;line-height:1.25;text-decoration:underline;text-underline-offset:1.2mm}
-    .jc-reported{display:grid;grid-template-columns:26mm 2mm 1fr;row-gap:3mm;align-items:end;margin:2mm 0 0 45mm;max-width:120mm}
-    .jc-label{font-size:9pt;font-weight:800}
-    .jc-line{display:block;min-height:1.25em;padding:0 1mm;border-bottom:1px dotted #000;line-height:1.35}
-    .jc-signbox{height:22mm;margin:1mm 0 0 10mm;border:1.2px solid #000;border-radius:3mm;display:flex;align-items:center;justify-content:center;overflow:hidden}
-    .jc-info{display:grid;grid-template-columns:45mm 2mm 1fr;row-gap:2.5mm;margin:5mm 0 0 3mm;align-items:end;padding-right:3mm}
-    .jc-info .lbl{font-size:9pt;font-weight:800;text-transform:uppercase}
-    .jc-manpower{display:grid;grid-template-columns:45mm 2mm 1fr;row-gap:2mm;margin:4mm 0 0 3mm;align-items:end;padding-right:3mm}
-    .jc-manpower .lbl{font-size:9pt;font-weight:800;text-transform:uppercase}
-    .jc-manpower-line{display:flex;align-items:flex-end;gap:2mm;min-width:0}
-    .jc-manpower-line .n{font-weight:800}
-    .jc-manpower-line .line{flex:1;border-bottom:1px dotted #000;min-height:1.25em;padding:0 .5mm}
-    .jc-jobs{width:100%;border-collapse:collapse;margin:5mm 0 6mm;table-layout:fixed;border:1.2px solid #000}
-    .jc-jobs th{height:6mm;font-size:8.5pt;font-weight:800;text-transform:uppercase;border:1.2px solid #000;text-align:center}
-    .jc-jobs td{height:6mm;padding:0 1.5mm;vertical-align:middle;border:1px solid #000;font-size:8pt;overflow-wrap:anywhere}
-    .jc-jobs td.no{text-align:center}
-    .jc-enduser{display:grid;grid-template-columns:38% 1fr;border:1.2px solid #000;height:34mm;margin:auto 8% 0 0}
-    .jc-eu-left{display:flex;flex-direction:column;border-right:1.2px solid #000}
-    .jc-eu-left>div{padding:0 2mm}
-    .jc-eu-title{text-align:center;border-bottom:1.2px solid #000;font-weight:700;height:7mm;line-height:7mm}
-    .jc-eu-name{border-bottom:1.2px solid #000;height:7mm;line-height:7mm;font-size:8pt}
-    .jc-eu-pos{border-bottom:1.2px solid #000;height:7mm;line-height:7mm;font-size:8pt}
-    .jc-eu-sign{flex:1;display:flex;align-items:flex-end;padding-bottom:2mm;overflow:hidden}
-    .jc-inline{display:inline-block;min-width:48mm;border-bottom:1px dotted #000;padding:0 .5mm}
-  </style>
-  <main class="jc-paper">
-    <header class="jc-head">
-      <div class="jc-logo"><img src="https://hidup-baru.com/wp-content/uploads/2023/04/cropped-HBPA.png" alt="Hidup Baru" referrerpolicy="no-referrer"></div>
-      <div class="jc-title">JOB COMPLETION REPORT</div>
-      <div></div>
-    </header>
-
-    <section class="jc-reported">
-      <div class="jc-label">REPORTED BY</div><div>:</div><div id="jc-reportedBy" class="jc-line"></div>
-      <div class="jc-label">SIGNATURE</div><div>:</div><div></div>
-      <div></div><div></div><div id="jc-reported-ttd" class="jc-signbox"></div>
-    </section>
-
-    <section class="jc-info">
-      <div class="lbl">Job Name</div><div>:</div><div id="jc-jobName" class="jc-line"></div>
-      <div class="lbl">Job No.</div><div>:</div><div id="jc-jobNo" class="jc-line"></div>
-      <div class="lbl">Location</div><div>:</div><div id="jc-location" class="jc-line"></div>
-      <div class="lbl">Date &amp; Time</div><div>:</div><div id="jc-dateTime" class="jc-line"></div>
-    </section>
-
-    <section class="jc-manpower">
-      <div class="lbl">Manpower<br>Name / Classification</div><div>:</div>
-      <div class="jc-manpower-line"><span class="n">1)</span><span id="jc-mp-name-1" class="line"></span><span>/</span><span id="jc-mp-class-1" class="line"></span></div>
-      <div></div><div>:</div>
-      <div class="jc-manpower-line"><span class="n">2)</span><span id="jc-mp-name-2" class="line"></span><span>/</span><span id="jc-mp-class-2" class="line"></span></div>
-      <div></div><div>:</div>
-      <div class="jc-manpower-line"><span class="n">3)</span><span id="jc-mp-name-3" class="line"></span><span>/</span><span id="jc-mp-class-3" class="line"></span></div>
-      <div></div><div>:</div>
-      <div class="jc-manpower-line"><span class="n">4)</span><span id="jc-mp-name-4" class="line"></span><span>/</span><span id="jc-mp-class-4" class="line"></span></div>
-    </section>
-
-    <table class="jc-jobs">
-      <colgroup><col style="width:17mm"><col style="width:40mm"><col></colgroup>
-      <thead><tr><th>No</th><th>Date &amp; Time</th><th>Job Description</th></tr></thead>
-      <tbody id="jc-jobRows"></tbody>
-    </table>
-
-    <section class="jc-enduser">
-      <div class="jc-eu-left">
-        <div class="jc-eu-title">END USER</div>
-        <div class="jc-eu-name">NAME : <span id="jc-endUserName" class="jc-inline"></span></div>
-        <div class="jc-eu-pos">POSITION : <span id="jc-endUserPosition" class="jc-inline"></span></div>
-        <div class="jc-eu-sign"><div>SIGN :<div id="jc-endUser-ttd"></div></div></div>
-      </div>
-      <div></div>
-    </section>
-  </main>
-</div>
+<div id="print-job-completion" class="hidden">${jcSheetHtml({ withIds: true })}</div>
 
 <div id="print-checklist" class="hidden"></div>
 `;
@@ -682,17 +597,33 @@ const PRINT_AREAS = `
 
 type Handler = (el: HTMLElement, id: number) => void | Promise<void>;
 
-const ACTIONS: Record<string, Handler> = {
+/** Aksi shell yang selalu ada, tidak bergantung halaman aktif. */
+const GLOBAL_ACTIONS: Record<string, Handler> = {
   'toggle-sidebar': () => toggleSidebar(),
   'close-sidebar': () => toggleSidebar(true),
   'close-drawer': () => drawer.close(),
   'refresh-all': () => refreshAll(),
+};
 
-  open: (_el, id) => transport.openDrawer(id),
-  save: (_el, id) => transport.save(id),
-  create: () => transport.create(),
-  'create-new': () => transport.openCreate(),
-  print: (el, id) => {
+/**
+ * Aksi per halaman. Namanya sama di semua halaman (lihat ActionVerb di ui.ts),
+ * jadi `data-action="detail"` selalu membuka detail dan `"print"` selalu
+ * mencetak. Handler dipilih dari halaman yang sedang aktif.
+ */
+const PAGE_ACTIONS: Record<PageKey, Record<string, Handler>> = {
+  overview: {
+    pick: (el, id) => overview.toggle(id, (el as HTMLInputElement).checked),
+    'select-all': () => overview.selectAll(true),
+    clear: () => overview.selectAll(false),
+    send: (el) => overview.sendSelected(el as HTMLButtonElement),
+  },
+
+  transport: {
+    detail: (_el, id) => transport.openDrawer(id),
+    save: (_el, id) => transport.save(id),
+    create: () => transport.create(),
+    new: () => transport.openCreate(),
+    print: (el, id) => {
     const fromDrawer = el.dataset.from === 'drawer';
     const prefill = store.transport.find((t) => t.rowId === id)?.nama ?? '';
     askSignature(
@@ -707,10 +638,13 @@ const ACTIONS: Record<string, Handler> = {
   email: (el, id) => transport.email([id], el as HTMLButtonElement),
   delete: (_el, id) => transport.remove(id),
   export: () => transport.exportCsv(),
+  },
 
-  'inv-open': (_el, id) => inventaris.openDrawer(id),
-  'inv-save': (_el, id) => inventaris.save(id),
-  'inv-print': (_el, id) => {
+  inventaris: {
+  detail: (_el, id) => inventaris.openDrawer(id),
+  save: (_el, id) => inventaris.save(id),
+  delete: (_el, id) => inventaris.remove(id),
+  print: (_el, id) => {
     const prefill = store.inventaris.find((i) => i.rowId === id)?.nama ?? '';
     askSignature(
       'Cetak Form Peminjaman Inventaris',
@@ -722,16 +656,16 @@ const ACTIONS: Record<string, Handler> = {
       (sigs) => inventaris.printRow(id, sigs),
     );
   },
-  'inv-all-good': () => inventaris.setAllGood(),
-  'inv-status': (el) => inventaris.onStatusChange(el as HTMLSelectElement),
+  'all-good': () => inventaris.setAllGood(),
+  status: (el) => inventaris.onStatusChange(el as HTMLSelectElement),
+  },
 
-  pick: (el, id) => overview.toggle(id, (el as HTMLInputElement).checked),
-  'select-all': () => overview.selectAll(true),
-  'select-none': () => overview.selectAll(false),
-  'send-selected': (el) => overview.sendSelected(el as HTMLButtonElement),
-
-  'dr-open': (_el, id) => dailyReport.openDrawer(id),
-  'dr-pdf': (_el, id) => {
+  daily: {
+  detail: (_el, id) => dailyReport.openDrawer(id),
+  save: (_el, id) => dailyReport.saveDrEdit(id),
+  delete: (_el, id) => dailyReport.remove(id),
+  'add-row': () => dailyReport.addDrRow(),
+  print: (_el, id) => {
     const prefill = store.dailyReports.find((d) => d.rowId === id)?.driver ?? '';
     askSignature(
       'Cetak Surat Tugas / Daily Report',
@@ -743,18 +677,32 @@ const ACTIONS: Record<string, Handler> = {
     );
   },
 
-  'cl-open': (_el, id) => clOpenDetail(id),
-  'cl-print': (_el, id) => clPrintChecklist(id),
+  },
 
-  'mr-request-open': (_el, id) => manpowerRequisitionPage.openDrawer(id),
-  'mr-request-save': (_el, id) => manpowerRequisitionPage.save(id),
-  'mr-request-delete': (_el, id) => manpowerRequisitionPage.remove(id),
-  'mr-request-print': (_el, id) => manpowerRequisitionPage.printRequest(id),
+  'checklist-list': {
+  detail: (_el, id) => clOpenDetail(id),
+  save: () => clSaveEdit(),
+  delete: (_el, id) => clRemove(id),
+  print: (_el, id) => clPrintChecklist(id),
+  },
 
-  'mr-completion-open': (_el, id) => jobCompletionPage.openDrawer(id),
-  'mr-completion-save': (_el, id) => jobCompletionPage.save(id),
-  'mr-completion-delete': (_el, id) => jobCompletionPage.remove(id),
-  'mr-completion-print': (_el, id) => jobCompletionPage.printRequest(id),
+  'manpower-requisition': {
+  detail: (_el, id) => manpowerRequisitionPage.openDrawer(id),
+  save: (_el, id) => manpowerRequisitionPage.save(id),
+  delete: (_el, id) => manpowerRequisitionPage.remove(id),
+  print: (_el, id) => manpowerRequisitionPage.printRequest(id),
+  // Opsi Required Manpower (Electrical/Civil/Mechanical) di dalam drawer.
+  opt: (el) => {
+    el.classList.toggle('sel');
+  },
+  },
+
+  'job-completion': {
+  detail: (_el, id) => jobCompletionPage.openDrawer(id),
+  save: (_el, id) => jobCompletionPage.save(id),
+  delete: (_el, id) => jobCompletionPage.remove(id),
+  print: (_el, id) => jobCompletionPage.printRequest(id),
+  },
 };
 /* =====================================================
    ROUTER
@@ -775,7 +723,7 @@ function renderNav(): void {
         ${section.pages.map((key) => {
           const page = PAGES[key];
           const active = key === current;
-          return `<button class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
+          return `<button class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${
             active
               ? 'bg-primary-50 font-semibold text-primary-600 shadow-sm'
               : 'font-medium text-surface-600 hover:bg-surface-100 hover:text-surface-900'
@@ -814,10 +762,10 @@ function toggleSidebar(force?: boolean): void {
 }
 
 function wireInputs(page: Page): void {
-  for (const id of ['q', 'inv-q', 'mail-q', 'dr-q', 'mr-search', 'mc-search']) {
+  for (const id of ['q', 'inv-q', 'mail-q', 'dr-q', 'cl-q', 'mr-search', 'mc-search']) {
     $(id)?.addEventListener('input', () => page.onSearchInput?.());
   }
-  for (const id of ['filter-status', 'filter-dept', 'inv-status', 'dr-status']) {
+  for (const id of ['filter-status', 'filter-dept', 'inv-status', 'dr-status', 'cl-filter-status']) {
     $(id)?.addEventListener('change', () => page.onFilterChange?.());
   }
 }
@@ -872,16 +820,22 @@ function delegate(event: Event): void {
 
   const el = target.closest<HTMLElement>('[data-action]');
   if (el) {
-    const handler = ACTIONS[el.dataset.action ?? ''];
+    const verb = el.dataset.action ?? '';
+    const handler = GLOBAL_ACTIONS[verb] ?? PAGE_ACTIONS[current][verb];
     if (handler) {
       const res = handler(el, Number(el.dataset.id ?? 0));
       if (res && typeof (res as any).then === 'function') {
-        const ov = $('loading');
-        ov?.classList.remove('hidden');
-        (res as Promise<any>).finally(() => ov?.classList.add('hidden'));
+        setPageLoading(true);
+        (res as Promise<any>).finally(() => setPageLoading(false));
       }
     }
   }
+}
+
+/** Garis merah hilang begitu user mengetik kembali di kolom yang kosong. */
+function clearInvalid(event: Event): void {
+  const el = event.target as HTMLElement | null;
+  if (el?.classList.contains('is-invalid')) el.classList.remove('is-invalid');
 }
 
 async function boot(): Promise<void> {
@@ -889,6 +843,7 @@ async function boot(): Promise<void> {
 
   document.addEventListener('click', delegate);
   document.addEventListener('change', delegate);
+  document.addEventListener('input', clearInvalid);
   window.addEventListener('hashchange', () => {
     const key = pageKeyFromHash();
     if (key !== current) render(key);

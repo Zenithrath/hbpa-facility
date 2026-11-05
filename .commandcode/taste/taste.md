@@ -15,3 +15,6 @@
 - For formal printouts, use the physical document's intended paper size: Manpower Requisition prints A4 and Job Completion prints A4. Confidence: 0.9
 - For approval/signature sections in formal printouts, prefers stacking the blocks vertically (top-to-bottom) rather than side-by-side columns. Confidence: 0.7
 - Prefers starting with the smallest useful scope (“cukup begitu dulu”) and adding workflow automation later only when explicitly requested. Confidence: 0.9
+- Explicitly forbids the assistant from running shell/terminal commands; prefers direct file edits or answers without executing commands. Confidence: 0.95
+- On Windows cmd, avoid non-portable Unix utilities like `tail`; use cmd-native approaches (e.g., `findstr`, `more`, `for /f`, or piping to `find`) or other portable methods. Confidence: 0.9
+- Prioritizes keeping the app lightweight; prefers moving large inline strings/CSS/HTML templates out of JS into static assets or lazy-loading them, and avoiding injecting style blocks repeatedly. Confidence: 0.9

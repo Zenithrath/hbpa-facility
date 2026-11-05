@@ -10,25 +10,30 @@ import { INVENTARIS_FIELDS, KONDISI_OPTIONS, type InventarisItem } from '../sche
 import { store } from '../store';
 import {
   $,
+  actionBtn,
+  actionCell,
+  cardActions,
   drawer,
+  emptyCard,
   emptyRow,
+  errorText,
   esc,
   field$,
   formField,
-  icon,
   isoToSlash,
   loadingRow,
+  MSG,
   orDash,
   print,
   readForm,
   must,
+  report,
   signatureHtml,
   slashToIso,
   type Signatures,
   toast,
   todayISO,
 } from '../ui';
-import { message, report } from './transport';
 
 /** Status turunan: masih dipinjam tapi sudah lewat tanggal kembali. */
 export function statusOf(item: InventarisItem): 'Dipinjam' | 'Overdue' | 'Selesai' {
@@ -87,23 +92,6 @@ function lines(items: InventarisItem['items']): string {
     .join('');
 }
 
-export function renderStats(): void {
-  const count = (s: string) => store.inventaris.filter((i) => statusOf(i) === s).length;
-  const rows = [
-    ['i-total', store.inventaris.length, 'Total Peminjaman'],
-    ['i-dipinjam', count('Dipinjam'), 'Sedang Dipinjam'],
-    ['i-overdue', count('Overdue'), 'Lewat Tanggal Kembali'],
-    ['i-selesai', count('Selesai'), 'Sudah Dikembalikan'],
-  ] as const;
-
-  for (const [id, value, label] of rows) {
-    const el = $(id);
-    if (el) el.textContent = String(value);
-    const sub = $(`${id}-label`);
-    if (sub) sub.textContent = label;
-  }
-}
-
 export function renderList(): void {
   const rows = visible();
   const tbody = $('inv-tbody');
@@ -112,38 +100,35 @@ export function renderList(): void {
 
   if (!rows.length) {
     tbody.innerHTML = emptyRow(10, 'Tidak ada peminjaman yang cocok.');
-    cards.innerHTML =
-      `<div class="card p-8 text-center text-sm text-surface-400">Tidak ada peminjaman yang cocok.</div>`;
+    cards.innerHTML = emptyCard('Tidak ada peminjaman yang cocok.');
     must('inv-count').textContent = `${rows.length} dari ${store.inventaris.length} peminjaman`;
     return;
   }
 
   tbody.innerHTML = rows
     .map(
-      (item) => `<tr class="cursor-pointer border-b border-surface-100 hover:bg-surface-100"
-      data-action="inv-open" data-id="${item.rowId}">
-      <td class="px-4 py-3 text-sm font-bold whitespace-nowrap">${esc(item.noDok)}</td>
-      <td class="px-4 py-3 text-sm font-bold whitespace-nowrap">${esc(orDash(item.nama))}</td>
-      <td class="px-4 py-3 text-sm whitespace-nowrap">${esc(orDash(item.kontak))}</td>
-      <td class="min-w-56 px-4 py-3 text-sm">${lines(item.items)}</td>
-      <td class="px-4 py-3 text-sm whitespace-nowrap">${esc(orDash(item.tglPinjam))}</td>
-      <td class="px-4 py-3 text-sm whitespace-nowrap">${esc(orDash(item.tglKembali))}</td>
-      <td class="min-w-40 px-4 py-3 text-sm">${esc(orDash(item.keperluan))}</td>
-      <td class="px-4 py-3 whitespace-nowrap">${badge(item)}</td>
-      <td class="px-4 py-3 text-sm whitespace-nowrap">${esc(orDash(item.tglKembaliAktual))}</td>
-      <td class="sticky-col px-4 py-3 text-right whitespace-nowrap">
-        <div class="inline-flex gap-1.5">
-          <button class="btn-amber" data-action="inv-open" data-id="${item.rowId}">Proses Kembali</button>
-          <button class="btn-slate" data-action="inv-print" data-id="${item.rowId}">Cetak A5</button>
-        </div>
-      </td>
+      (item) => `<tr data-action="detail" data-id="${item.rowId}">
+      <td class="font-bold whitespace-nowrap">${esc(item.noDok)}</td>
+      <td class="font-bold whitespace-nowrap">${esc(orDash(item.nama))}</td>
+      <td class="whitespace-nowrap">${esc(orDash(item.kontak))}</td>
+      <td class="min-w-56">${lines(item.items)}</td>
+      <td class="whitespace-nowrap">${esc(orDash(item.tglPinjam))}</td>
+      <td class="whitespace-nowrap">${esc(orDash(item.tglKembali))}</td>
+      <td class="min-w-40">${esc(orDash(item.keperluan))}</td>
+      <td class="whitespace-nowrap">${badge(item)}</td>
+      <td class="whitespace-nowrap">${esc(orDash(item.tglKembaliAktual))}</td>
+      ${actionCell(
+        actionBtn('detail', { id: item.rowId }),
+        actionBtn('print', { id: item.rowId }),
+        actionBtn('delete', { id: item.rowId }),
+      )}
     </tr>`,
     )
     .join('');
 
   cards.innerHTML = rows
     .map(
-      (item) => `<div class="card p-4" data-action="inv-open" data-id="${item.rowId}">
+      (item) => `<div class="card p-4" data-action="detail" data-id="${item.rowId}">
       <div class="flex items-start justify-between gap-2">
         <div class="min-w-0">
           <div class="text-xs font-bold text-primary-700 break-words">${esc(item.noDok)}</div>
@@ -157,10 +142,11 @@ export function renderList(): void {
       </div>
       <div class="mt-1 text-sm">${lines(item.items)}</div>
       <div class="mt-1 text-xs text-surface-500 break-words">${esc(item.keperluan)}</div>
-      <div class="mt-3 grid grid-cols-2 gap-2">
-        <button class="btn-amber" data-action="inv-open" data-id="${item.rowId}">Proses Kembali</button>
-        <button class="btn-slate" data-action="inv-print" data-id="${item.rowId}">Cetak A5</button>
-      </div>
+      ${cardActions(
+        actionBtn('detail', { id: item.rowId }),
+        actionBtn('print', { id: item.rowId }),
+        actionBtn('delete', { id: item.rowId }),
+      )}
     </div>`,
     )
     .join('');
@@ -170,22 +156,38 @@ export function renderList(): void {
 
 export async function refresh(): Promise<void> {
   const tbody = $('inv-tbody');
-  if (tbody) tbody.innerHTML = loadingRow(10, 'Memuat data peminjaman...');
-  renderStats();
+  const cards = $('inv-cards');
+  if (tbody) tbody.innerHTML = loadingRow(10);
+  if (cards) cards.innerHTML = '';
   try {
     store.inventaris = await api.listInventaris();
   } catch (error) {
     console.error(error);
     showError(error);
   }
-  renderStats();
   renderList();
+}
+
+export async function remove(rowId: number): Promise<void> {
+  const item = store.inventaris.find((i) => i.rowId === rowId);
+  if (!item) {
+    toast('Data peminjaman tidak ditemukan.', 'error');
+    return;
+  }
+  if (!confirm(`Hapus peminjaman ${item.noDok} (${item.nama})? Baris di spreadsheet akan dihapus.`)) return;
+  try {
+    await api.deleteInventaris(rowId);
+    toast('Dihapus');
+    await refresh();
+  } catch (error) {
+    report(error);
+  }
 }
 
 function showError(error: unknown): void {
   const el = $('inv-error');
   if (!el) return;
-  el.textContent = `Data peminjaman tidak dapat dimuat: ${message(error)}`;
+  el.textContent = `Data peminjaman tidak dapat dimuat: ${errorText(error)}`;
   el.classList.remove('hidden');
 }
 
@@ -211,9 +213,9 @@ function itemRows(item: InventarisItem): string {
     return `<div class="sm:col-span-2 text-sm text-surface-400">Tidak ada barang tercatat.</div>`;
   }
   return `<div class="border-t border-surface-100 pt-4 sm:col-span-2">
-    <div class="mb-2 flex items-center justify-between">
+    <div class="mb-2 flex items-center justify-between gap-2">
       <h4 class="text-xs font-bold tracking-wide text-surface-700 uppercase">Kondisi Pengembalian Barang</h4>
-      <button class="text-xs font-semibold text-primary-700 hover:underline" data-action="inv-all-good">Set semua Baik</button>
+      ${actionBtn('all-good')}
     </div>
     ${item.items
       .map(
@@ -241,7 +243,7 @@ export function openDrawer(rowId: number): void {
   const fields = INVENTARIS_FIELDS.map((f) =>
     f.key === 'tglKembaliAktual'
       ? formField(f, slashToIso(item.tglKembaliAktual) || todayISO())
-      : formField(f, item[f.key], f.key === 'status' ? 'data-action="inv-status"' : ''),
+      : formField(f, item[f.key], f.key === 'status' ? 'data-action="status"' : ''),
   );
 
   drawer.open({
@@ -260,10 +262,8 @@ export function openDrawer(rowId: number): void {
         ${fields.join('')}
       </div>`,
     footer: `
-      <button class="btn-slate px-4 py-2" data-action="inv-print" data-id="${rowId}">
-        ${icon('print')} Cetak Dokumen A5
-      </button>
-      <button class="btn-primary" data-action="inv-save" data-id="${rowId}">Simpan Pengembalian</button>`,
+      ${actionBtn('print', { id: rowId, extra: 'px-4 py-2' })}
+      ${actionBtn('save', { id: rowId })}`,
   });
 }
 
@@ -298,7 +298,7 @@ export async function save(rowId: number): Promise<void> {
   });
 
   drawer.close();
-  toast('Menyimpan...');
+  toast(MSG.saving);
   try {
     await api.saveInventaris({
       rowId,
@@ -309,7 +309,7 @@ export async function save(rowId: number): Promise<void> {
       catatan: patch.catatan ?? '',
       lines: lineInputs,
     });
-    toast('Tersimpan');
+    toast(MSG.saved);
     clearError();
     await refresh();
   } catch (error) {

@@ -5,7 +5,8 @@
 import { manpowerApi, parseManpowerLines } from "./api";
 import { createManpowerPage } from "./page";
 import type { ManpowerRequest } from "./types";
-import { esc, print, icon } from "../ui";
+import { actionBtn, actionCell, cardActions, esc, print, toast } from "../ui";
+import "../styles/manpower.css";
 
 const SEARCH_ID = "mr-search";
 const COUNT_ID = "mr-count";
@@ -20,6 +21,56 @@ function requiredClass(item: ManpowerRequest): string {
 function outlineSummary(item: ManpowerRequest): string {
   const first = parseManpowerLines(item.jobOutline)[0] ?? "";
   return first || "-";
+}
+
+let fullSheetAt = 0;
+
+function caretToEnd(el: HTMLElement): void {
+  try {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  } catch {
+    // Selection tidak tersedia (mis. jsdom); posisi kursor tidak penting.
+  }
+}
+
+/**
+ * Kunci editor ke tinggi A5. Kalau ketikan membuat isi melewati area yang
+ * tersedia, karakter terakhir dibatalkan supaya lembar tidak pernah meluber
+ * (dan tidak pernah jadi halaman kedua saat dicetak).
+ */
+function lockSheetToA5(): void {
+  const content = document.querySelector<HTMLElement>('#drawer .mpr-drawer .content-pad');
+  if (!content) return;
+
+  // Data lama bisa saja sudah melebihi A5. Simpan besar luberannya supaya
+  // user tetap bisa menghapus teks, tapi tidak bisa menambah lagi.
+  let lastOverflow = Math.max(0, content.scrollHeight - content.clientHeight);
+
+  document.querySelectorAll<HTMLElement>('#drawer .mpr-drawer .sheet-a5 [contenteditable]').forEach((el) => {
+    let lastValid = el.innerHTML;
+
+    el.addEventListener('input', () => {
+      const overflow = content.scrollHeight - content.clientHeight;
+      // Toleransi 2px untuk pembulatan mm ke px.
+      if (overflow > 2 && overflow > lastOverflow + 1) {
+        el.innerHTML = lastValid;
+        caretToEnd(el);
+        const now = Date.now();
+        if (now - fullSheetAt > 1500) {
+          fullSheetAt = now;
+          toast('Lembar A5 sudah penuh. Hapus atau pendekkan teks dulu.', 'error');
+        }
+        return;
+      }
+      lastValid = el.innerHTML;
+      lastOverflow = Math.max(0, overflow);
+    });
+  });
 }
 
 export const manpowerRequisitionPage = createManpowerPage<ManpowerRequest>({
@@ -40,26 +91,39 @@ export const manpowerRequisitionPage = createManpowerPage<ManpowerRequest>({
   },
 
   renderRow(item) {
-    return `<tr class="border-t border-surface-100 align-top hover:bg-surface-50/60">
+    return `<tr class="cursor-pointer border-t border-surface-100 align-top hover:bg-surface-50/60" data-action="detail" data-id="${item.rowId}">
       <td class="px-4 py-3 text-sm whitespace-nowrap">${esc(item.requestedDate || item.timestamp || "-")}</td>
       <td class="px-4 py-3 text-sm"><div class="font-semibold">${esc(item.requesterName || "-")}</div><div class="text-[11px] text-surface-400">${esc(item.requesterEmail || "")}</div></td>
       <td class="px-4 py-3 text-sm"><div>${esc(item.department || "-")}</div><div class="text-[11px] text-surface-400">${esc(item.division || "")}</div></td>
       <td class="px-4 py-3 text-sm">${esc(requiredClass(item))}</td>
       <td class="px-4 py-3 text-sm max-w-xs"><div class="line-clamp-2">${esc(outlineSummary(item))}</div></td>
-      <td class="px-4 py-3 text-right whitespace-nowrap"><button class="btn-amber" data-action="mr-request-open" data-id="${item.rowId}">${icon("edit", "h-3.5 w-3.5")} Detail</button></td>
+      ${actionCell(
+        actionBtn('detail', { id: item.rowId }),
+        actionBtn('print', { id: item.rowId }),
+        actionBtn('delete', { id: item.rowId }),
+      )}
     </tr>`;
   },
   renderCard(item) {
-    return `<div class="card p-4">
-      <div class="flex items-start justify-between gap-2"><div><div class="text-xs font-bold uppercase text-primary-700">${esc(item.requestedDate || "-")}</div><h4 class="mt-1 font-bold">${esc(item.requesterName || "-")}</h4><p class="text-xs text-surface-500">${esc(item.department || "-")}${item.division ? ` · ${esc(item.division)}` : ""}</p></div><button class="btn-amber" data-action="mr-request-open" data-id="${item.rowId}">Detail</button></div>
+    return `<div class="card cursor-pointer p-4" data-action="detail" data-id="${item.rowId}">
+      <div class="flex items-start justify-between gap-2"><div><div class="text-xs font-bold uppercase text-primary-700">${esc(item.requestedDate || "-")}</div><h4 class="mt-1 font-bold">${esc(item.requesterName || "-")}</h4><p class="text-xs text-surface-500">${esc(item.department || "-")}${item.division ? ` · ${esc(item.division)}` : ""}</p></div></div>
       <div class="mt-3 text-xs"><span class="font-bold">Manpower:</span> ${esc(requiredClass(item))}</div>
       <div class="mt-2 text-xs text-surface-600">${esc(outlineSummary(item))}</div>
+      ${cardActions(
+        actionBtn('detail', { id: item.rowId }),
+        actionBtn('print', { id: item.rowId }),
+        actionBtn('delete', { id: item.rowId }),
+      )}
     </div>`;
   },
 
   drawerTitle(item) {
     return `Manpower Requisition — ${item.requesterName || `Baris ${item.rowId}`}`;
   },
+  // Panel dibuat pas selebar lembar A5; 'md' memotong kolom tanda tangan
+  // paling kanan, sedangkan 'xl' menyisakan ruang kosong terlalu banyak.
+  drawerSize: 'a5',
+  afterOpen: lockSheetToA5,
   drawerBody(item) {
     const chosen = (item.requiredManpower || "")
       .split(/[,/]+/)
@@ -77,41 +141,7 @@ export const manpowerRequisitionPage = createManpowerPage<ManpowerRequest>({
       outlineRowsHtml += `<div class="n">${i}.</div><div class="mpr-outline-cell" contenteditable spellcheck="false" data-index="${i - 1}">${esc(val)}</div>`;
     }
 
-    return `<style>
-      .mpr-drawer{font-family:Calibri,Carlito,"Segoe UI",Arial,sans-serif;font-size:8.5pt;color:#000;display:flex;justify-content:center}
-      .mpr-drawer .sheet-a5{width:148mm;min-height:205mm;background:#fff;padding:6mm 0 0 0;border:1.2px solid #000;display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden}
-      .mpr-drawer .content-pad{padding:0 7mm}
-      
-      /* Header & Logo diperkecil */
-      .mpr-drawer .head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;min-height:9mm;margin-bottom:7mm}
-      .mpr-drawer .logo img{height:8.5mm;width:auto;max-width:26mm;object-fit:contain}
-      .mpr-drawer .title{text-align:center;white-space:nowrap;font-size:11pt;font-weight:800;text-decoration:underline;text-underline-offset:0.8mm}
-      
-      .mpr-edit-line{min-height:1.35em;border-bottom:1px dotted #000;padding:0 1mm;line-height:1.3;outline:none}
-      .mpr-edit-inline{display:inline-block;min-width:22mm;border-bottom:1px dotted #000;padding:0 1mm;line-height:1.3;outline:none}
-      
-      /* Jarak isi dari header (margin ditingkatkan) */
-       .mpr-drawer .info{display:grid;grid-template-columns:36mm 2mm 1fr;row-gap:2.4mm;margin:2mm 0 0 2mm;align-items:end}
-      .mpr-drawer .lbl{font-weight:800;font-size:8pt;text-transform:uppercase}
-      .mpr-drawer .opts{font-style:italic;font-weight:700;text-transform:uppercase;font-size:8pt;display:flex;align-items:center;gap:0.6mm;flex-wrap:wrap}
-      .mpr-drawer .opt{display:inline-block;padding:0.2mm 1.6mm;border:1.2px solid transparent;border-radius:10mm;cursor:pointer;user-select:none}
-      .mpr-drawer .opt.sel{border-color:#000}
-      
-      /* Jarak antar bagian disesuaikan agar lebih lega */
-      .mpr-drawer .ol-title{margin:4mm 0 1.6mm 2mm;font-weight:800;font-size:8pt;text-transform:uppercase}
-      .mpr-drawer .ol{display:grid;grid-template-columns:6mm 1fr;row-gap:1.4mm;margin:0 0 0 1mm;align-items:start}
-      .mpr-drawer .ol .n{text-align:right;padding-right:1mm;font-weight:600;user-select:none;align-self:start;margin-top:0.1mm}
-      .mpr-drawer .mpr-outline-cell{min-height:3.4mm;line-height:1.16;white-space:normal;word-break:break-word;overflow-wrap:anywhere;border-bottom:1px dotted #000;padding:0 1mm 0.05mm 1mm;outline:none;align-self:start}
-      
-      /* Kolom Tanda Tangan */
-      .mpr-drawer .approval{margin-top:auto;width:100%;display:grid;grid-template-columns:repeat(3,1fr);border-top:1.2px solid #000}
-      .mpr-drawer .approval .col{border-right:1.2px solid #000;display:flex;flex-direction:column}
-      .mpr-drawer .approval .col:last-child{border-right:0}
-      .mpr-drawer .approval .hd{text-align:center;font-weight:700;height:5.6mm;line-height:5.6mm;border-bottom:1.2px solid #000;font-size:8pt}
-      .mpr-drawer .approval .box{height:16mm}
-      .mpr-drawer .approval .nm{border-top:1.2px solid #000;padding:0.6mm 1.2mm 0.8mm;line-height:4.6mm;font-size:7.6pt}
-      .mpr-drawer [contenteditable]:focus{outline:1.5px solid #2563eb;outline-offset:1px;background:#fffbe6}
-    </style>
+    return `
     <div class="mpr-drawer">
       <div class="sheet-a5">
         <div class="content-pad">
@@ -126,9 +156,9 @@ export const manpowerRequisitionPage = createManpowerPage<ManpowerRequest>({
             <div class="lbl">* Requested Date</div><div>:</div>${line("mr-r-requestedDate", item.requestedDate)}
             <div class="lbl">* Required Manpower</div><div>:</div>
             <div class="opts">
-              <span class="opt ${isSel("Electrical")}" data-opt="Electrical" tabindex="0">Electrical</span>/
-              <span class="opt ${isSel("Civil")}" data-opt="Civil" tabindex="0">Civil</span>/
-              <span class="opt ${isSel("Mechanical")}" data-opt="Mechanical" tabindex="0">Mechanical</span>
+              <span class="opt ${isSel("Electrical")}" data-opt="Electrical" data-action="opt" tabindex="0">Electrical</span>/
+              <span class="opt ${isSel("Civil")}" data-opt="Civil" data-action="opt" tabindex="0">Civil</span>/
+              <span class="opt ${isSel("Mechanical")}" data-opt="Mechanical" data-action="opt" tabindex="0">Mechanical</span>
             </div>
           </section>
           <div class="ol-title">* Job Out Line / Short Description</div>
@@ -189,10 +219,10 @@ export const manpowerRequisitionPage = createManpowerPage<ManpowerRequest>({
     };
   },
   drawerFooter(item) {
-    return `<button class="btn-slate px-4 py-2 text-red-600" data-action="mr-request-delete" data-id="${item.rowId}">Hapus</button>
+    return `${actionBtn('delete', { id: item.rowId, extra: 'px-4 py-2' })}
       <div class="flex flex-wrap gap-2">
-        <button class="btn-slate px-4 py-2" data-action="mr-request-print" data-id="${item.rowId}">Cetak A5</button>
-        <button class="btn-primary" data-action="mr-request-save" data-id="${item.rowId}">Simpan Perubahan</button>
+        ${actionBtn('print', { id: item.rowId, extra: 'px-4 py-2' })}
+        ${actionBtn('save', { id: item.rowId })}
       </div>`;
   },
 

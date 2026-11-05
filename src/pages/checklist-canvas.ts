@@ -15,27 +15,31 @@ export interface DamageMark {
 
 export const DAMAGE_VIEWS = ["ATAS", "KIRI", "KANAN", "DEPAN", "BELAKANG"] as const;
 
-/** Ukuran bitmap tiap tampilan, mengikuti rasio gambar aslinya. */
+/**
+ * Ukuran kanvas tiap tampilan, mengikuti rasio viewBox SVG-nya supaya model
+ * tidak gepeng dan koordinat penanda tetap sebanding:
+ * atas 855×1829, kiri/kanan 1700×700, depan/belakang 1000×900.
+ */
 export const VIEW_DIMENSIONS: Record<string, { w: number; h: number }> = {
-  ATAS: { w: 300, h: 578 },
-  KIRI: { w: 480, h: 320 },
-  KANAN: { w: 480, h: 320 },
-  DEPAN: { w: 480, h: 320 },
-  BELAKANG: { w: 480, h: 320 },
+  ATAS: { w: 330, h: 706 },
+  KIRI: { w: 680, h: 280 },
+  KANAN: { w: 680, h: 280 },
+  DEPAN: { w: 450, h: 405 },
+  BELAKANG: { w: 450, h: 405 },
 };
 
 /**
- * Gambar kendaraan memakai WebP hasil render, bukan SVG trace aslinya.
- * Lima SVG itu totalnya ~4 MB dan lama di-decode; versi WebP ini ~330 KB
- * sehingga halaman langsung tampil.
+ * Model kendaraan memakai SVG vektor (satu berkas per sisi, ~420 KB total),
+ * jadi tetap tajam saat diperbesar dan hemat dibanding render bitmap lama.
  */
-import ckAtas from "../../public/ck-atas.webp";
-import ckBelakang from "../../public/ck-belakang.webp";
-import ckDepan from "../../public/ck-depan.webp";
-import ckKanan from "../../public/ck-kanan.webp";
-import ckKiri from "../../public/ck-kiri.webp";
+import ckAtas from "../../public/ck-atas.svg";
+import ckBelakang from "../../public/ck-belakang.svg";
+import ckDepan from "../../public/ck-depan.svg";
+import ckKanan from "../../public/ck-kanan.svg";
+import ckKiri from "../../public/ck-kiri.svg";
 
-const CAR_SRC: Record<string, string> = {
+/** Sumber gambar per tampilan, dipakai kanvas input dan kertas cetak. */
+export const CAR_SVG: Record<string, string> = {
   ATAS: ckAtas,
   KIRI: ckKiri,
   KANAN: ckKanan,
@@ -48,7 +52,7 @@ const carLoading = new Set<string>();
 const repainters = new Map<string, Set<() => void>>();
 
 function carImageFor(view: string): HTMLImageElement | null {
-  const src = CAR_SRC[view];
+  const src = CAR_SVG[view];
   if (!src) return null;
 
   let img = carImages[view];
@@ -154,12 +158,9 @@ export function bindDamageCanvas(
       return;
     }
 
-    const iw = img.naturalWidth;
-    const ih = img.naturalHeight;
-    const scale = Math.min(width / iw, height / ih) * 0.94;
-    const dw = iw * scale;
-    const dh = ih * scale;
-    ctx.drawImage(img, (width - dw) / 2, (height - dh) / 2, dw, dh);
+    // Gambar mengisi kanvas penuh (rasio kanvas = rasio SVG), jadi persentase
+    // penanda di kanvas sama persis dengan persentase di kertas cetak.
+    ctx.drawImage(img, 0, 0, width, height);
 
     const state = read();
     drawMarks(ctx, width, height, view, state.marks, state.pending ?? null);
@@ -193,5 +194,5 @@ export function bindDamageCanvas(
 
 /** Mulai decode gambar di latar belakang supaya kanvas cepat terisi. */
 export function preloadDamageImages(): void {
-  for (const view of Object.keys(CAR_SRC)) carImageFor(view);
+  for (const view of Object.keys(CAR_SVG)) carImageFor(view);
 }

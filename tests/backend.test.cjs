@@ -606,6 +606,11 @@ const pageDr = ctx.doGet({ parameter: { page: 'dr' } });
 eq('page dr tidak dilayani', /tidak ditemukan/i.test(pageDr.text || ''), true);
 eq('createHtmlOutputFromFile hanya dipanggil untuk checklist', htmlFiles, ['checklist']);
 
+console.log('\n--- ?page= tidak boleh membajak aksi JSON ---');
+const listWithPage = call('getRequests', { page: 1, pageSize: 10 });
+eq('getRequests + page=1 tetap JSON', listWithPage.success, true);
+eq('getRequests + page=1 tetap berisi item', listWithPage.data.items.length, 2);
+
 console.log('\n--- halaman DR/CK pindah ke frontend ---');
 const pageFs = require('fs');
 const appDir = path.join(__dirname, '..', 'apps-script');

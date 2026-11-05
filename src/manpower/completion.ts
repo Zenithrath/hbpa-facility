@@ -5,7 +5,17 @@
 import { manpowerApi, parseManpowerLines } from './api';
 import { createManpowerPage } from './page';
 import type { JobCompletion } from './types';
-import { esc, print, icon } from '../ui';
+import { actionBtn, actionCell, cardActions, esc, print } from '../ui';
+import {
+  JC_JOB_ROWS,
+  jcSheetHtml,
+  joinJcJobs,
+  joinJcManpower,
+  parseJcJobs,
+  parseJcManpower,
+  type JcJobRow,
+  type JcManpowerRow,
+} from './completion-sheet';
 
 const SEARCH_ID = 'mc-search';
 const COUNT_ID = 'mc-count';
@@ -20,6 +30,41 @@ function splitDateTime(value: string): { date: string; time: string } {
 
 function firstLogLine(item: JobCompletion): string {
   return parseManpowerLines(item.jobDescriptionLog)[0] ?? '';
+}
+
+/**
+ * Baca isi lembar form yang sedang terbuka di drawer.
+ * null = drawer tertutup, jadi pemanggil memakai data dari server.
+ */
+function sheetValues(): Record<string, string> | null {
+  if (!document.querySelector('#drawer .jc-paper')) return null;
+
+  const clean = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, ' ').trim();
+  const field = (name: string) => clean(document.querySelector<HTMLElement>(`#drawer [data-f="${name}"]`)?.textContent);
+
+  const manpower: JcManpowerRow[] = [1, 2, 3, 4].map((index) => ({
+    name: field(`mpName${index}`),
+    classification: field(`mpClass${index}`),
+  }));
+
+  const jobs: JcJobRow[] = [];
+  document.querySelectorAll<HTMLTableRowElement>('#drawer .jc-jobs tbody tr').forEach((tr) => {
+    const dateTime = clean(tr.querySelector<HTMLElement>('[data-col="dt"]')?.textContent);
+    const description = clean(tr.querySelector<HTMLElement>('[data-col="ds"]')?.textContent);
+    if (dateTime || description) jobs.push({ dateTime, description });
+  });
+
+  return {
+    reportedBy: field('reportedBy'),
+    jobName: field('jobName'),
+    jobNo: field('jobNo'),
+    location: field('location'),
+    dateTime: field('dateTime'),
+    endUserName: field('endUserName'),
+    endUserPosition: field('endUserPosition'),
+    manpower: joinJcManpower(manpower),
+    jobDescriptionLog: joinJcJobs(jobs),
+  };
 }
 
 
@@ -48,66 +93,47 @@ export const jobCompletionPage = createManpowerPage<JobCompletion>({
 
   renderRow(item) {
     const dt = splitDateTime(item.dateTime);
-    return `<tr class="border-t border-surface-100 align-top hover:bg-surface-50/60">
+    return `<tr class="cursor-pointer border-t border-surface-100 align-top hover:bg-surface-50/60" data-action="detail" data-id="${item.rowId}">
       <td class="px-4 py-3 text-sm whitespace-nowrap"><div>${esc(dt.date || '-')}</div><div class="text-[11px] text-surface-400">${esc(dt.time)}</div></td>
       <td class="px-4 py-3 text-sm"><div class="font-semibold">${esc(item.jobName || '-')}</div><div class="text-[11px] text-surface-400">${esc(item.jobNo || '')}</div></td>
       <td class="px-4 py-3 text-sm">${esc(item.location || '-')}</td>
       <td class="px-4 py-3 text-sm">${esc(item.reportedBy || '-')}</td>
       <td class="px-4 py-3 text-sm"><div>${esc(item.endUserName || '-')}</div><div class="text-[11px] text-surface-400">${esc(item.endUserPosition || '')}</div></td>
-      <td class="px-4 py-3 text-right whitespace-nowrap"><button class="btn-amber" data-action="mr-completion-open" data-id="${item.rowId}">${icon('edit', 'h-3.5 w-3.5')} Detail</button></td>
+      ${actionCell(
+        actionBtn('detail', { id: item.rowId }),
+        actionBtn('print', { id: item.rowId }),
+        actionBtn('delete', { id: item.rowId }),
+      )}
     </tr>`;
   },
   renderCard(item) {
     const dt = splitDateTime(item.dateTime);
-    return `<div class="card p-4">
-      <div class="flex items-start justify-between gap-2"><div><div class="text-xs font-bold uppercase text-primary-700">${esc(dt.date || '-')}${dt.time ? ` · ${esc(dt.time)}` : ''}</div><h4 class="mt-1 font-bold">${esc(item.jobName || '-')}</h4><p class="text-xs text-surface-500">${esc(item.location || '-')}</p></div><button class="btn-amber" data-action="mr-completion-open" data-id="${item.rowId}">Detail</button></div>
+    return `<div class="card cursor-pointer p-4" data-action="detail" data-id="${item.rowId}">
+      <div class="flex items-start justify-between gap-2"><div><div class="text-xs font-bold uppercase text-primary-700">${esc(dt.date || '-')}${dt.time ? ` · ${esc(dt.time)}` : ''}</div><h4 class="mt-1 font-bold">${esc(item.jobName || '-')}</h4><p class="text-xs text-surface-500">${esc(item.location || '-')}</p></div></div>
       <div class="mt-3 text-xs text-surface-600"><span class="font-bold">Reported:</span> ${esc(item.reportedBy || '-')}<br><span class="font-bold">End User:</span> ${esc(item.endUserName || '-')}</div>
       <div class="mt-2 text-xs text-surface-500">${esc(firstLogLine(item))}</div>
+      ${cardActions(
+        actionBtn('detail', { id: item.rowId }),
+        actionBtn('print', { id: item.rowId }),
+        actionBtn('delete', { id: item.rowId }),
+      )}
     </div>`;
   },
 
   drawerTitle(item) { return `Job Completion — ${item.jobName || `Baris ${item.rowId}`}`; },
+  drawerSize: 'xl',
   drawerBody(item) {
-    const input = (id: string, label: string, value: string, type = 'text') => `<div><label class="field-label" for="${id}">${esc(label)}</label><input id="${id}" type="${type}" class="field" value="${esc(value)}"></div>`;
-    const textarea = (id: string, label: string, value: string, rows: number, help: string) => `<div><label class="field-label" for="${id}">${esc(label)}</label><textarea id="${id}" class="field font-mono text-xs" rows="${rows}">${esc(value)}</textarea><p class="mt-1 text-[11px] text-surface-400">${esc(help)}</p></div>`;
-
-    return `<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      ${input('mc-dateTime', 'Date & Time', item.dateTime)}
-      ${input('mc-timestamp', 'Timestamp', item.timestamp)}
-      ${input('mc-jobName', 'Job Name', item.jobName)}
-      ${input('mc-jobNo', 'Job No.', item.jobNo)}
-      ${input('mc-reportedBy', 'Reported By', item.reportedBy)}
-      ${input('mc-submittedByEmail', 'Submitted By (Email)', item.submittedByEmail, 'email')}
-      ${input('mc-location', 'Location', item.location)}
-      ${input('mc-endUserName', 'End User Name', item.endUserName)}
-      ${input('mc-endUserPosition', 'End User Position', item.endUserPosition)}
-    </div>
-    <div class="mt-4 space-y-4">
-      ${textarea('mc-manpower', 'Manpower', item.manpower, 5, 'Satu manpower per baris, contoh: 1. Andi | Electrical')}
-      ${textarea('mc-jobDescriptionLog', 'Job Description Log', item.jobDescriptionLog, 10, 'Satu pekerjaan per baris, contoh: 1. 03/11/2026 08:00 | Instalasi kabel')}
-    </div>`;
+    return `<div class="jc-fit">${jcSheetHtml({ editable: true, item })}</div>`;
   },
   patchFromDrawer() {
-    const value = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement | null)?.value.trim() ?? '';
-    return {
-      dateTime: value('mc-dateTime'),
-      timestamp: value('mc-timestamp'),
-      jobName: value('mc-jobName'),
-      jobNo: value('mc-jobNo'),
-      reportedBy: value('mc-reportedBy'),
-      submittedByEmail: value('mc-submittedByEmail'),
-      location: value('mc-location'),
-      endUserName: value('mc-endUserName'),
-      endUserPosition: value('mc-endUserPosition'),
-      manpower: value('mc-manpower'),
-      jobDescriptionLog: value('mc-jobDescriptionLog'),
-    };
+    const sheet = sheetValues();
+    return sheet ?? {};
   },
   drawerFooter(item) {
-    return `<button class="btn-slate px-4 py-2 text-red-600" data-action="mr-completion-delete" data-id="${item.rowId}">Hapus</button>
+    return `${actionBtn('delete', { id: item.rowId, extra: 'px-4 py-2' })}
       <div class="flex flex-wrap gap-2">
-        <button class="btn-slate px-4 py-2" data-action="mr-completion-print" data-id="${item.rowId}">Cetak A4</button>
-        <button class="btn-primary" data-action="mr-completion-save" data-id="${item.rowId}">Simpan Perubahan</button>
+        ${actionBtn('print', { id: item.rowId, extra: 'px-4 py-2' })}
+        ${actionBtn('save', { id: item.rowId })}
       </div>`;
   },
 
@@ -119,36 +145,35 @@ export const jobCompletionPage = createManpowerPage<JobCompletion>({
   },
   signatureTitle: 'Tanda Tangan Job Completion',
   print(item, signatures) {
+    // Kalau drawer terbuka, cetak apa yang sedang tampil di lembar (termasuk
+    // editan yang belum disimpan), bukan data lama.
+    const edited = sheetValues();
+    const data: JobCompletion = edited ? { ...item, ...edited } : item;
+
     print.show('job-completion');
-    print.set('jc-reportedBy', signatures.reported?.name || item.reportedBy);
-    print.set('jc-jobName', item.jobName);
-    print.set('jc-jobNo', item.jobNo || '-');
-    print.set('jc-location', item.location);
-    print.set('jc-dateTime', item.dateTime);
-    print.set('jc-endUserName', signatures.endUser?.name || item.endUserName);
-    print.set('jc-endUserPosition', item.endUserPosition);
+    print.set('jc-reportedBy', signatures.reported?.name || data.reportedBy);
+    print.set('jc-jobName', data.jobName);
+    print.set('jc-jobNo', data.jobNo || '-');
+    print.set('jc-location', data.location);
+    print.set('jc-dateTime', data.dateTime);
+    print.set('jc-endUserName', signatures.endUser?.name || data.endUserName);
+    print.set('jc-endUserPosition', data.endUserPosition);
     print.setHtml('jc-reported-ttd', signatures.reported?.image ? `<img src="${signatures.reported.image}" alt="" style="height:48px">` : '');
     print.setHtml('jc-endUser-ttd', signatures.endUser?.image ? `<img src="${signatures.endUser.image}" alt="" style="height:48px">` : '');
 
-    const mpLines = parseManpowerLines(item.manpower);
+    const manpower = parseJcManpower(data.manpower);
     for (let i = 1; i <= 4; i++) {
-      const line = mpLines[i - 1] ?? '';
-      const match = /^(?:\d+\.\s*)?(.*?)(?:\s*\||\s*\/|\s+-\s+)\s*(.*)$/.exec(line);
-      print.set(`jc-mp-name-${i}`, match?.[1]?.trim() ?? line);
-      print.set(`jc-mp-class-${i}`, match?.[2]?.trim() ?? '');
+      print.set(`jc-mp-name-${i}`, manpower[i - 1]?.name ?? '');
+      print.set(`jc-mp-class-${i}`, manpower[i - 1]?.classification ?? '');
     }
 
-    const lines = parseManpowerLines(item.jobDescriptionLog);
-    const rowCount = Math.max(17, lines.length);
+    const jobs = parseJcJobs(data.jobDescriptionLog);
+    const rowCount = Math.max(JC_JOB_ROWS, jobs.length);
     const tbody = document.getElementById('jc-jobRows');
     if (tbody) {
       tbody.innerHTML = Array.from({ length: rowCount }, (_, index) => {
-        const raw = lines[index] ?? '';
-        const clean = raw.replace(/^\s*\d+\.\s*/, '');
-        const parts = clean.split('|').map((part) => part.trim());
-        const dateTime = parts.length > 1 ? parts[0] : '';
-        const description = parts.length > 1 ? parts.slice(1).join(' | ') : clean;
-        return `<tr><td class="no">${index + 1}</td><td>${esc(dateTime)}</td><td>${esc(description)}</td></tr>`;
+        const row = jobs[index];
+        return `<tr><td class="no">${index + 1}</td><td>${esc(row?.dateTime ?? '')}</td><td>${esc(row?.description ?? '')}</td></tr>`;
       }).join('');
     }
     print.run();

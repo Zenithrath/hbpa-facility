@@ -52,20 +52,22 @@ document.addEventListener('click', (event) => {
   const action = actionEl?.dataset.action;
   if (!action) return;
 
+  // Nama aksi sama dengan halaman admin: save, print, reset, all-good,
+  // add-mark, delete.
   switch (action) {
-    case 'ck-save':
+    case 'save':
       void save();
       return;
-    case 'ck-reset':
+    case 'reset':
       reset();
       return;
-    case 'ck-semuaBaik':
+    case 'all-good':
       semuaBaik();
       return;
-    case 'ck-catat':
+    case 'add-mark':
       catat();
       return;
-    case 'ck-delMark': {
+    case 'delete': {
       const id = Number(actionEl?.dataset.id ?? -1);
       if (id >= 0) removeMark(id);
       return;

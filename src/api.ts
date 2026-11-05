@@ -205,6 +205,9 @@ export const api = {
     lines: InventarisLineInput[];
   }) => write('saveInventaris', body).then(() => invalidate('getInventarisData')),
 
+  deleteInventaris: (rowId: number) =>
+    writeParams('deleteInventaris', { rowId }).then(() => invalidate('getInventarisData')),
+
   /* ---------- Surat Tugas / Daily Report + Checklist Kendaraan ---------- */
 
   /** Master driver, kendaraan, item checklist, dan pilihan IJN. */
@@ -283,6 +286,9 @@ export const api = {
     rows?: { start: string; finish: string; nopol?: string; ijn?: string; namaUser?: string; km?: string; solar?: string; uraian?: string }[];
   }) => write('updateDr', body).then(() => invalidate('getDrData')),
 
+  deleteDr: (rowId: number) =>
+    writeParams('deleteDr', { rowId }).then(() => invalidate('getDrData')),
+
   updateCk: (body: {
     id?: string;
     rowId?: number;
@@ -306,6 +312,9 @@ export const api = {
 
   updateCkStatus: (id: string, status: string) =>
     writeParams('updateCkStatus', { id, status }).then(() => invalidate('getCkData')),
+
+  deleteCk: (rowId: number) =>
+    writeParams('deleteCk', { rowId }).then(() => invalidate('getCkData')),
 };
 
 export type { Pagination };

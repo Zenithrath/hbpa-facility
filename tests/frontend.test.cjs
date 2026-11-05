@@ -166,6 +166,7 @@ const RESPONSES = {
 };
 
 const calls = [];
+const bodies = [];
 const urls = [];
 const opened = [];
 
@@ -181,6 +182,13 @@ function fakeFetch(url, options) {
     }
   }
   calls.push(action);
+  if (options?.body) {
+    try {
+      bodies.push(JSON.parse(String(options.body)));
+    } catch {
+      // body bukan JSON, abaikan
+    }
+  }
   urls.push(url);
   const isManpower = url.includes('/macros/s/MR/exec');
   const body = isManpower && action === 'getRequests'
@@ -203,7 +211,7 @@ async function build(entry, apiUrl) {
     format: 'iife',
     write: false,
     target: 'es2022',
-    loader: { '.css': 'empty', '.webp': 'dataurl' },
+    loader: { '.css': 'empty', '.webp': 'dataurl', '.svg': 'dataurl' },
     define: {
       'import.meta.env.VITE_GAS_URL': JSON.stringify(apiUrl ?? null),
       'import.meta.env.VITE_MR_GAS_URL': JSON.stringify(MR_API_URL),
@@ -276,7 +284,7 @@ async function run() {
   ok('pesan API_URL kosong muncul', emptyText().includes('API_URL belum diisi'));
   ok('sidebar tetap dirender', Boolean(emptyDoc.getElementById('sidebar')));
   ok('7 menu navigasi (5 Facility + 2 Manpower)', emptyDoc.querySelectorAll('#nav [data-page]').length === 7);
-  ok('section FACILITY tampil', emptyDoc.getElementById('nav')?.textContent.includes('FACILITY'));
+  ok('section PEMINJAMAN tampil', emptyDoc.getElementById('nav')?.textContent.includes('PEMINJAMAN'));
   ok('section MANPOWER tampil', emptyDoc.getElementById('nav')?.textContent.includes('MANPOWER'));
 
   // ---- Skenario 2: API_URL terisi ----
@@ -306,7 +314,7 @@ async function run() {
   doc.querySelector('[data-page="transport"]').click();
   await tick();
   if (logs.length) console.log('   [log]', logs.slice(0, 4).join('\n         '));
-  eq('judul', doc.getElementById('title').textContent, 'Daftar Permintaan Transportasi');
+  eq('judul', doc.getElementById('title').textContent, 'Transport Requests');
   eq('jumlah baris tabel', doc.querySelectorAll('#tbody tr').length, 2);
   eq('jumlah header kolom', doc.querySelectorAll('#thead th').length, 11);
   eq('pilihan divisi terisi', doc.getElementById('filter-dept').options.length, 4);
@@ -355,11 +363,10 @@ async function run() {
   console.log('\n--- halaman Inventaris ---');
   doc.querySelector('[data-page="inventaris"]').click();
   await tick();
-  eq('judul', doc.getElementById('title').textContent, 'Peminjaman Inventaris Barang');
-  eq('total peminjaman', doc.getElementById('i-total').textContent, '2');
-  eq('dipinjam', doc.getElementById('i-dipinjam').textContent, '1');
-  eq('overdue', doc.getElementById('i-overdue').textContent, '1');
+  eq('judul', doc.getElementById('title').textContent, 'Inventory Borrowing');
   eq('baris tabel', doc.querySelectorAll('#inv-tbody tr').length, 2);
+  const invActions = [...doc.querySelectorAll('#inv-tbody tr:first-child [data-action]')].map((el) => el.dataset.action);
+  ok('aksi list Inventaris: detail, cetak, hapus', ['detail', 'print', 'delete'].every((a) => invActions.includes(a)));
 
   doc.querySelector('#inv-tbody tr').click();
   await tick(60);
@@ -372,7 +379,7 @@ async function run() {
   doc.getElementById('f-tglKembaliAktual').value = '';
   doc.getElementById('f-status').dispatchEvent(new window.Event('change', { bubbles: true }));
   ok('tanggal terisi otomatis saat Selesai', doc.getElementById('f-tglKembaliAktual').value.length === 10);
-  doc.querySelector('[data-action="inv-save"]').click();
+  doc.querySelector('#drawer-footer [data-action="save"]').click();
   await tick();
   ok('saveInventaris benar-benar dipanggil', calls.includes('saveInventaris'));
   const invUrl = [...urls].reverse().find((u) => u.includes('action=saveInventaris')) || '';
@@ -382,8 +389,10 @@ async function run() {
   console.log('\n--- halaman Daily Report ---');
   doc.querySelector('[data-page="daily"]').click();
   await tick();
-  eq('judul daily report', doc.getElementById('title').textContent, 'Surat Tugas / Daily Report');
+  eq('judul daily report', doc.getElementById('title').textContent, 'Assignment Letter / Daily Report');
   eq('2 dokumen tampil', doc.querySelectorAll('#dr-tbody tr').length, 2);
+  const drActions = [...doc.querySelectorAll('#dr-tbody tr:first-child [data-action]')].map((el) => el.dataset.action);
+  ok('aksi list Daily Report: detail, cetak, hapus', ['detail', 'print', 'delete'].every((a) => drActions.includes(a)));
   ok('tidak ada form input DR', !doc.getElementById('dr-driver'));
   ok('tidak ada tombol simpan DR', !doc.querySelector('[data-action="dr-save"]'));
   ok('baris Google Form tanpa ID diberi label', doc.querySelector('#dr-tbody tr').textContent.includes('Form #12'));
@@ -403,9 +412,9 @@ async function run() {
   ok('drawer detail terbuka', !doc.getElementById('drawer').classList.contains('hidden'));
   ok('drawer memuat driver', doc.getElementById('drawer-body').textContent.includes('Andi'));
   ok('drawer memuat uraian', (doc.getElementById('dr-r0-uraian') || {}).value === 'Antar dokumen');
-  ok('drawer punya tombol PDF', Boolean(doc.querySelector('#drawer-footer [data-action="dr-pdf"]')));
+  ok('drawer punya tombol Cetak', Boolean(doc.querySelector('#drawer-footer [data-action="print"]')));
 
-  doc.querySelector('#drawer-footer [data-action="dr-pdf"]').click();
+  doc.querySelector('#drawer-footer [data-action="print"]').click();
   await tick(60);
   ok('modal tanda tangan muncul sebelum cetak', !doc.getElementById('sig-modal').classList.contains('hidden'));
   ok('slot daily: kanvas tanda tangan tersedia', Boolean(doc.getElementById('sig-canvas-driver')) && Boolean(doc.getElementById('sig-canvas-mengetahui')));
@@ -443,7 +452,7 @@ async function run() {
   doc.querySelector('[data-page="overview"]').click();
   await tick();
   doc.querySelector('#email-list input[type="checkbox"]').click();
-  doc.querySelector('[data-action="send-selected"]').click();
+  doc.querySelector('[data-action="send"]').click();
   await tick();
   ok('sendEmail dipanggil', calls.includes('sendEmail'));
   const mailUrl = urls.find((u) => u.includes('action=sendEmail')) || '';
@@ -478,7 +487,7 @@ async function run() {
   ok('tanpa topbar dashboard', !standaloneDoc.querySelector('#nav'));
   ok('judul halaman standalone', standaloneDoc.querySelector('h1')?.textContent.includes('Checklist Kendaraan'));
   eq('item dari master tampil', standaloneDoc.querySelectorAll('#ck-grup .ck-item').length, 2);
-  ok('tombol Cetak tidak tampil di user page', !standaloneDoc.querySelector('[data-action="ck-print"]'));
+  ok('tombol Cetak tidak tampil di user page', !standaloneDoc.querySelector('[data-action="print"]'));
 
   const ckRow = standaloneDoc.querySelector('#ck-grup .ck-item');
   const rusak = ckRow.querySelector('input[data-status="Rusak"]');
@@ -490,7 +499,7 @@ async function run() {
   const damageCanvas = standaloneDoc.querySelector('#ck-cv-KIRI');
   damageCanvas.dispatchEvent(new standalone.window.MouseEvent('click', { bubbles: true, clientX: 40, clientY: 80 }));
   standaloneDoc.getElementById('ck-sisiCatatan').value = 'baret';
-  standaloneDoc.querySelector('[data-action="ck-catat"]').click();
+  standaloneDoc.querySelector('[data-action="add-mark"]').click();
   ok('penanda kerusakan tercatat', standaloneDoc.getElementById('ck-markCount').textContent === '1');
 
   ok('field No. Plat tampil', Boolean(standaloneDoc.getElementById('ck-kendaraan')));
@@ -500,7 +509,7 @@ async function run() {
   standaloneDoc.getElementById('ck-tipeMobil').value = 'Avanza';
   standaloneDoc.getElementById('ck-driver').value = 'Andi';
   standaloneDoc.getElementById('ck-kilometer').value = 'abc';
-  standaloneDoc.querySelector('[data-action="ck-save"]').click();
+  standaloneDoc.querySelector('[data-action="save"]').click();
   await tick(10);
   ok('dialog validasi Kilometer muncul', Boolean(standaloneDoc.getElementById('app-dialog')));
   ok('dialog validasi menyebut Kilometer', standaloneDoc.getElementById('app-dialog')?.textContent.includes('Kilometer'));
@@ -511,7 +520,7 @@ async function run() {
   standaloneDoc.getElementById('ck-kilometer').value = '62.000';
   standaloneDoc.getElementById('ck-bbmMasuk').value = '1/2';
   standaloneDoc.getElementById('ck-bbmKeluar').value = '1/4';
-  standaloneDoc.querySelector('[data-action="ck-save"]').click();
+  standaloneDoc.querySelector('[data-action="save"]').click();
   await tick();
   ok('saveCk benar-benar dipanggil dari standalone', calls.includes('saveCk'));
   ok('dialog berhasil muncul setelah simpan', standaloneDoc.getElementById('app-dialog')?.textContent.includes('Berhasil'));
@@ -540,15 +549,41 @@ async function run() {
   await tick();
   eq('judul Manpower Requisition', doc.getElementById('title').textContent, 'Manpower Requisition');
   eq('2 requisition tampil', doc.querySelectorAll(`#mr-tbody tr`).length, 2);
-  doc.querySelector('[data-action="mr-request-open"][data-id="4"]').click();
+  const mrActions = [...doc.querySelectorAll('#mr-tbody tr:first-child [data-action]')].map((el) => el.dataset.action);
+  ok('aksi list Manpower: detail, cetak, hapus', ['detail', 'print', 'delete'].every((a) => mrActions.includes(a)));
+  const mrActionCell = doc.querySelector('#mr-tbody tr:first-child > td.sticky-col > div');
+  ok(
+    'aksi Manpower urut ke bawah rata kanan',
+    !!mrActionCell && mrActionCell.classList.contains('flex-col') && mrActionCell.classList.contains('items-end'),
+  );
+  eq('sel aksi Manpower tidak bersarang', doc.querySelectorAll('#mr-tbody tr:first-child > td').length, 6);
+  doc.querySelector('#mr-tbody tr').click();
+  await tick(50);
+  ok('klik baris Manpower membuka drawer', !doc.getElementById('drawer').classList.contains('hidden'));
+  doc.querySelector('[data-action="close-drawer"]').click();
+  await tick();
+  doc.querySelector('#mr-tbody-cards > div').click();
+  await tick(50);
+  ok('klik kartu Manpower membuka drawer', !doc.getElementById('drawer').classList.contains('hidden'));
+  doc.querySelector('[data-action="close-drawer"]').click();
+  await tick();
+  doc.querySelector('[data-action="detail"][data-id="4"]').click();
   await tick(50);
   ok('drawer Manpower Requisition terbuka', !doc.getElementById('drawer').classList.contains('hidden'));
-  doc.querySelector('[data-f="requesterName"]').textContent = 'Budi Update';
-  doc.querySelector('[data-action="mr-request-save"][data-id="4"]').click();
+  const contentPad = doc.querySelector('#drawer .mpr-drawer .content-pad');
+  Object.defineProperty(contentPad, 'clientHeight', { configurable: true, get: () => 100 });
+  Object.defineProperty(contentPad, 'scrollHeight', { configurable: true, get: () => 200 });
+  const outlineCell = doc.querySelector('#drawer .mpr-outline-cell');
+  const outlineBefore = outlineCell.innerHTML;
+  outlineCell.textContent = `${outlineBefore} teks yang bikin lembar penuh`;
+  outlineCell.dispatchEvent(new window.Event('input', { bubbles: true }));
+  eq('editor A5 menolak teks saat lembar penuh', outlineCell.innerHTML, outlineBefore);
+  doc.querySelector('#mr-r-requesterName').textContent = 'Budi Update';
+  doc.querySelector('[data-action="save"][data-id="4"]').click();
   await tick();
   ok('saveRequest dipanggil', calls.includes('saveRequest'));
 
-  doc.querySelector('[data-action="mr-request-print"][data-id="4"]').click();
+  doc.querySelector('[data-action="print"][data-id="4"]').click();
   await tick(50);
   ok('modal tanda tangan Manpower Requisition muncul', !doc.getElementById('sig-modal').classList.contains('hidden'));
   doc.getElementById('sig-name-approved').value = 'Sari';
@@ -557,20 +592,45 @@ async function run() {
   await tick(50);
   ok('area cetak Manpower Requisition tampil', !doc.getElementById('print-manpower-requisition').classList.contains('hidden'));
   eq('nama tersimpan di area cetak', doc.getElementById('mpr-requestedName').textContent, 'Budi Santoso');
-  eq('job outline masuk cetak', doc.getElementById('mpr-outline-1').textContent, '1. Ganti lampu');
+  // Nomor baris dicetak oleh kolom "no" di form, jadi teks isinya tanpa "1.".
+  eq('job outline masuk cetak', doc.getElementById('mpr-outline-1').textContent, 'Ganti lampu');
   doc.querySelector('[data-action="close-drawer"]').click();
 
   doc.querySelector('[data-page="job-completion"]').click();
   await tick();
   eq('judul Job Completion', doc.getElementById('title').textContent, 'Job Completion');
   eq('1 completion tampil', doc.querySelectorAll(`#mc-tbody tr`).length, 1);
-  doc.querySelector('[data-action="mr-completion-open"][data-id="7"]').click();
+  const mcActions = [...doc.querySelectorAll('#mc-tbody tr:first-child [data-action]')].map((el) => el.dataset.action);
+  ok('aksi list Job Completion: detail, cetak, hapus', ['detail', 'print', 'delete'].every((a) => mcActions.includes(a)));
+  const mcActionCell = doc.querySelector('#mc-tbody tr:first-child > td.sticky-col > div');
+  ok(
+    'aksi Job Completion urut ke bawah rata kanan',
+    !!mcActionCell && mcActionCell.classList.contains('flex-col') && mcActionCell.classList.contains('items-end'),
+  );
+  eq('sel aksi Job Completion tidak bersarang', doc.querySelectorAll('#mc-tbody tr:first-child > td').length, 6);
+  doc.querySelector('#mc-tbody tr').click();
+  await tick(50);
+  ok('klik baris Job Completion membuka drawer', !doc.getElementById('drawer').classList.contains('hidden'));
+  doc.querySelector('[data-action="close-drawer"]').click();
+  await tick();
+  doc.querySelector('#mc-tbody-cards > div').click();
+  await tick(50);
+  ok('klik kartu Job Completion membuka drawer', !doc.getElementById('drawer').classList.contains('hidden'));
+  doc.querySelector('[data-action="close-drawer"]').click();
+  await tick();
+  doc.querySelector('[data-action="detail"][data-id="7"]').click();
   await tick(50);
   ok('drawer Job Completion terbuka', !doc.getElementById('drawer').classList.contains('hidden'));
-  doc.querySelector('[data-action="mr-completion-save"][data-id="7"]').click();
+  ok('drawer Job Completion memakai lembar form HTML', !!doc.querySelector('#drawer .jc-paper'));
+  ok('lembar drawer bisa diketik', doc.querySelector('#drawer [data-f="jobName"]').getAttribute('contenteditable') === 'true');
+  eq('lembar drawer punya 17 baris pekerjaan', doc.querySelectorAll('#drawer .jc-jobs tbody tr').length >= 17, true);
+  doc.querySelector('#drawer [data-f="jobName"]').textContent = 'Panel Servis';
+  doc.querySelector('[data-action="save"][data-id="7"]').click();
   await tick();
   ok('saveCompletion dipanggil', calls.includes('saveCompletion'));
-  doc.querySelector('[data-action="mr-completion-print"][data-id="7"]').click();
+  const completionSave = bodies.filter((b) => b.action === 'saveCompletion').pop();
+  eq('job name dari lembar ikut tersimpan', completionSave?.fields?.jobName, 'Panel Servis');
+  doc.querySelector('[data-action="print"][data-id="7"]').click();
   await tick(50);
   ok('modal tanda tangan Job Completion muncul', !doc.getElementById('sig-modal').classList.contains('hidden'));
   doc.getElementById('sig-name-reported').value = 'Andi';

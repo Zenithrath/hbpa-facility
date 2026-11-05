@@ -4,9 +4,8 @@
 
 import { api } from '../api';
 import { store } from '../store';
-import { esc, icon, loadingRow, statusBadge, toast } from '../ui';
+import { errorText, esc, icon, loadingRow, report, statusBadge, toast } from '../ui';
 import { badge as invBadge } from './inventaris';
-import { message, report } from './transport';
 
 const selected = new Set<number>();
 
@@ -239,7 +238,7 @@ export async function refresh(): Promise<void> {
   } catch (error) {
     console.error(error);
     const el = document.getElementById('email-list');
-    if (el) el.innerHTML = `<div class="p-6 text-center text-sm text-red-600">${esc(message(error))}</div>`;
+    if (el) el.innerHTML = `<div class="p-6 text-center text-sm text-red-600">${esc(errorText(error))}</div>`;
   }
   renderTransportSummary();
   try {
@@ -247,7 +246,7 @@ export async function refresh(): Promise<void> {
     renderInventarisSummary();
   } catch (error) {
     console.error(error);
-    if (iBox) iBox.innerHTML = `<div class="px-6 py-6 text-center text-sm text-red-600">${esc(message(error))}</div>`;
+    if (iBox) iBox.innerHTML = `<div class="px-6 py-6 text-center text-sm text-red-600">${esc(errorText(error))}</div>`;
   }
 }
 

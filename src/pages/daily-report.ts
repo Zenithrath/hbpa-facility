@@ -11,20 +11,27 @@ import type { DrHeader } from '../schema';
 import { store } from '../store';
 import {
   $,
+  actionBtn,
+  actionCell,
+  cardActions,
   drawer,
+  emptyCard,
   emptyRow,
+  errorText,
   esc,
   field$,
-  icon,
   loadingRow,
+  MSG,
   must,
   orDash,
   print,
+  report,
+  setPageLoading,
   signatureHtml,
   type Signatures,
   toast,
+  validateRequired,
 } from '../ui';
-import { message, report } from './transport';
 
 /** PDF yang sudah dibuat selama halaman terbuka, supaya klik kedua instan. */
 const PDF_CACHE = new Map<number, string>();
@@ -82,38 +89,35 @@ export function renderList(): void {
 
   if (!rows.length) {
     tbody.innerHTML = emptyRow(6, 'Tidak ada Daily Report yang cocok.');
-    cards.innerHTML =
-      `<div class="card p-8 text-center text-sm text-surface-400">Tidak ada Daily Report yang cocok.</div>`;
+    cards.innerHTML = emptyCard('Tidak ada Daily Report yang cocok.');
     must('dr-count').textContent = `${rows.length} dari ${store.dailyReports.length} Daily Report`;
     return;
   }
 
   tbody.innerHTML = rows
     .map(
-      (item) => `<tr class="cursor-pointer border-b border-surface-100 hover:bg-surface-100"
-      data-action="dr-open" data-id="${item.rowId}">
-      <td class="px-4 py-3 text-sm font-bold whitespace-nowrap">${esc(docLabel(item))}</td>
-      <td class="px-4 py-3 text-sm whitespace-nowrap">${esc(orDash(item.hari))}
+      (item) => `<tr data-action="detail" data-id="${item.rowId}">
+      <td class="font-bold whitespace-nowrap">${esc(docLabel(item))}</td>
+      <td class="whitespace-nowrap">${esc(orDash(item.hari))}
         <div class="text-[11px] text-surface-400">${esc(orDash(item.tanggal))}</div>
       </td>
-      <td class="px-4 py-3 text-sm font-semibold whitespace-nowrap">${esc(orDash(item.driver))}</td>
-      <td class="px-4 py-3 text-sm whitespace-nowrap">
+      <td class="font-semibold whitespace-nowrap">${esc(orDash(item.driver))}</td>
+      <td class="whitespace-nowrap">
         <span class="rounded-md border border-surface-200 bg-surface-100 px-2 py-0.5 font-mono text-xs font-bold uppercase">${esc(plats(item))}</span>
       </td>
-      <td class="min-w-48 px-4 py-3 text-sm">${esc(uraianRingkas(item))}</td>
-      <td class="sticky-col px-4 py-3 text-right whitespace-nowrap">
-        <div class="inline-flex gap-1.5">
-          <button class="btn-slate" data-action="dr-open" data-id="${item.rowId}">Detail</button>
-          <button class="btn-primary" data-action="dr-pdf" data-id="${item.rowId}">${icon('print')} Cetak PDF</button>
-        </div>
-      </td>
+      <td class="min-w-48">${esc(uraianRingkas(item))}</td>
+      ${actionCell(
+        actionBtn('detail', { id: item.rowId }),
+        actionBtn('print', { id: item.rowId }),
+        actionBtn('delete', { id: item.rowId }),
+      )}
     </tr>`,
     )
     .join('');
 
   cards.innerHTML = rows
     .map(
-      (item) => `<div class="card p-4" data-action="dr-open" data-id="${item.rowId}">
+      (item) => `<div class="card p-4" data-action="detail" data-id="${item.rowId}">
       <div class="flex items-start justify-between gap-2">
         <div class="min-w-0">
           <div class="text-xs font-bold text-primary-700 break-words">${esc(docLabel(item))}</div>
@@ -129,10 +133,11 @@ export function renderList(): void {
         <span class="font-mono font-semibold uppercase">${esc(plats(item))}</span> ·
         ${esc(item.rows.length)} baris pekerjaan
       </div>
-      <div class="mt-3 grid grid-cols-2 gap-2">
-        <button class="btn-slate" data-action="dr-open" data-id="${item.rowId}">Detail</button>
-        <button class="btn-primary" data-action="dr-pdf" data-id="${item.rowId}">${icon('print')} Cetak PDF</button>
-      </div>
+      ${cardActions(
+        actionBtn('detail', { id: item.rowId }),
+        actionBtn('print', { id: item.rowId }),
+        actionBtn('delete', { id: item.rowId }),
+      )}
     </div>`,
     )
     .join('');
@@ -142,7 +147,9 @@ export function renderList(): void {
 
 export async function refresh(): Promise<void> {
   const tbody = $('dr-tbody');
-  if (tbody) tbody.innerHTML = loadingRow(6, 'Memuat Daily Report...');
+  const cards = $('dr-cards');
+  if (tbody) tbody.innerHTML = loadingRow(6);
+  if (cards) cards.innerHTML = '';
 
   try {
     store.dailyReports = await api.getDrDocuments();
@@ -151,14 +158,27 @@ export async function refresh(): Promise<void> {
   } catch (error) {
     console.error(error);
     store.dailyReports = [];
-    if (tbody) tbody.innerHTML = emptyRow(6, message(error));
-    const cards = $('dr-cards');
-    if (cards) {
-      cards.innerHTML =
-        `<div class="card p-8 text-center text-sm text-surface-400">${esc(message(error))}</div>`;
-    }
+    if (tbody) tbody.innerHTML = emptyRow(6, errorText(error));
+    if (cards) cards.innerHTML = emptyCard(errorText(error));
     const count = $('dr-count');
     if (count) count.textContent = '';
+    report(error);
+  }
+}
+
+export async function remove(rowId: number): Promise<void> {
+  const item = store.dailyReports.find((i) => i.rowId === rowId);
+  if (!item) {
+    toast('Daily Report tidak ditemukan.', 'error');
+    return;
+  }
+  if (!confirm(`Hapus Daily Report ${item.id || rowId}? Baris di spreadsheet akan dihapus.`)) return;
+  try {
+    await api.deleteDr(rowId);
+    PDF_CACHE.clear();
+    toast('Dihapus');
+    await refresh();
+  } catch (error) {
     report(error);
   }
 }
@@ -225,23 +245,21 @@ export function openDrawer(rowId: number): void {
       <div class="mt-4">
         <div class="mb-2 text-sm font-bold">Data Pekerjaan</div>
         <div id="dr-rows">${rowsHtml}</div>
-        <button class="btn-slate mt-2" type="button" onclick="addDrRow()">+ Tambah Baris</button>
+        <div class="mt-2">${actionBtn('add-row')}</div>
       </div>`,
     footer: `
-      <button class="btn-slate" type="button" onclick="drawer.close()">Batal</button>
-      <button class="btn-slate" type="button" data-action="dr-pdf" data-id="${item.rowId}">Cetak PDF</button>
-      <button class="btn-primary" type="button" onclick="saveDrEdit(${item.rowId})">Simpan Perubahan</button>`
+      <div class="flex flex-wrap gap-2">
+        <button class="btn-slate px-4 py-2" type="button" data-action="close-drawer">Batal</button>
+        ${actionBtn('print', { id: item.rowId })}
+      </div>
+      ${actionBtn('save', { id: item.rowId })}`
   });
-}
-
-
-// Inline onclick handler "Batal" di footer drawer membutuhkan drawer di scope global.
-if (typeof window !== 'undefined') {
-  (window as any).drawer = drawer;
 }
 
 /** Simpan perubahan daily report dari drawer */
 export async function saveDrEdit(rowId: number): Promise<void> {
+  if (!validateRequired([{ id: 'f-driver', label: 'Driver' }])) return;
+
   const idEl = $('f-id') as HTMLInputElement | null;
   const hariEl = $('f-hari') as HTMLInputElement | null;
   const tanggalEl = $('f-tanggal') as HTMLInputElement | null;
@@ -272,26 +290,18 @@ export async function saveDrEdit(rowId: number): Promise<void> {
     if (r.start || r.finish || r.nopol || r.ijn || r.namaUser || r.uraian || r.km || r.solar) rows.push(r);
   }
 
-  const ov = $('loading');
-  ov?.classList.remove('hidden');
-  toast('Menyimpan...');
+  setPageLoading(true);
+  toast(MSG.saving);
   try {
     await api.updateDr({ rowId, id, hari, tanggal, driver, mengetahui, rows });
-    toast('Daily Report berhasil diupdate.');
+    toast(MSG.saved);
     drawer.close();
     await refresh();
   } catch (error) {
-    toast('Error saat menyimpan: ' + (message(error)), 'error');
+    report(error);
   } finally {
-    ov?.classList.add('hidden');
+    setPageLoading(false);
   }
-}
-
-
-// Inline onclick handler "Simpan Perubahan" di footer drawer.
-if (typeof window !== 'undefined') {
-  (window as any).saveDrEdit = saveDrEdit;
-  (window as any).drawer = drawer;
 }
 
 /** Tambah baris pekerjaan baru di drawer */
@@ -316,13 +326,6 @@ export function addDrRow(): void {
       <div class="col-span-2"><label class="text-[10px] font-bold text-surface-400 uppercase">Uraian</label><input id="dr-r${i}-uraian" class="field" value=""></div>
     </div>`;
   container.appendChild(block);
-}
-
-// Inline onclick handlers di footer drawer.
-if (typeof window !== 'undefined') {
-  (window as any).addDrRow = addDrRow;
-  (window as any).saveDrEdit = saveDrEdit;
-  (window as any).drawer = drawer;
 }
 
 

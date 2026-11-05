@@ -16,15 +16,23 @@ import {
 } from './checklist-canvas';
 import {
   $,
+  actionBtn,
+  actionCell,
   askSignature,
-  debounce,
+  cardActions,
   drawer,
+  emptyCard,
+  emptyRow,
   esc,
   field$,
-  icon,
+  loadingRow,
   must,
   orDash,
   print,
+  report,
+  searchBar,
+  setBusy,
+  tableHead,
   type Signatures,
   toast,
 } from '../ui';
@@ -60,6 +68,12 @@ let activeEditRowId: number | null = null;
 let activeEditDoc: CkHeader | null = null;
 let editDirty = false;
 let refreshEditPreview: (() => void) | null = null;
+/** Aksi tombol Simpan di footer drawer (dipanggil lewat data-action="save"). */
+let saveEditHandler: (() => Promise<void>) | null = null;
+
+export async function saveEdit(): Promise<void> {
+  await saveEditHandler?.();
+}
 
 async function ensureCkDocs(): Promise<CkHeader[]> {
   if (ckDocs.length) return ckDocs;
@@ -89,137 +103,128 @@ function renderList(): void {
   });
 
   if (!items.length) {
-    tbody.innerHTML = '<tr><td class="p-4" colspan="6">Tidak ada data checklist.</td></tr>';
-    cards.innerHTML = '<div class="card p-8 text-center text-sm text-surface-400">Tidak ada data checklist.</div>';
+    tbody.innerHTML = emptyRow(6, 'Tidak ada data checklist.');
+    cards.innerHTML = emptyCard('Tidak ada data checklist.');
     must('cl-count').textContent = '0 dari 0 checklist';
     return;
   }
 
   tbody.innerHTML = items
     .map((item: ClistItem) => `
-      <tr class="cursor-pointer border-b border-surface-100 hover:bg-surface-100"
-        data-action="cl-open" data-id="${item.rowId}">
-        <td class="px-4 py-3 text-sm font-bold whitespace-nowrap">
-          ${item.noDok || `Form #${item.rowId}`}
-        </td>
-        <td class="px-4 py-3 text-sm whitespace-nowrap">
-          ${item.tanggal || ''}
-        </td>
-        <td class="px-4 py-3 text-sm font-semibold whitespace-nowrap">
-          ${item.driver || ''}
-        </td>
-        <td class="px-4 py-3 text-sm whitespace-nowrap">
-          ${item.kendaraan || ''}
-        </td>
-        <td class="px-4 py-3 text-sm whitespace-nowrap">
-          ${item.keterangan || ''}
-        </td>
-        <td class="sticky-col px-4 py-3 text-right whitespace-nowrap">
-          <div class="inline-flex gap-1.5">
-            <button class="btn-slate" data-action="cl-open" data-id="${item.rowId}">Detail</button>
-            <button class="btn-primary" data-action="cl-print" data-id="${item.rowId}">${icon('print')} Cetak</button>
-          </div>
-        </td>
+      <tr data-action="detail" data-id="${item.rowId}">
+        <td class="font-bold whitespace-nowrap">${esc(item.noDok || `Form #${item.rowId}`)}</td>
+        <td class="whitespace-nowrap">${esc(item.tanggal)}</td>
+        <td class="font-semibold whitespace-nowrap">${esc(item.driver)}</td>
+        <td class="whitespace-nowrap">${esc(item.kendaraan)}</td>
+        <td>${esc(item.keterangan)}</td>
+        ${actionCell(
+          actionBtn('detail', { id: item.rowId }),
+          actionBtn('print', { id: item.rowId }),
+        actionBtn('delete', { id: item.rowId }),
+        )}
       </tr>
     `).join('');
 
   cards.innerHTML = items
     .map((item: ClistItem) => `
-      <div class="card p-4" data-action="cl-open" data-id="${item.rowId}">
+      <div class="card p-4" data-action="detail" data-id="${item.rowId}">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
-            <div class="text-xs font-bold text-primary-700 break-words">
-              ${item.noDok || `Form #${item.rowId}`}
-            </div>
-            <div class="text-[11px] text-surface-400">
-              ${item.tanggal || ''} · ${item.driver || ''}
-            </div>
-          </div>
-          <div class="mt-2">
-            <div class="font-bold break-words">${esc(orDash(item.keterangan))}</div>
+            <div class="text-xs font-bold text-primary-700 break-words">${esc(item.noDok || `Form #${item.rowId}`)}</div>
+            <div class="text-[11px] text-surface-400">${esc(item.tanggal)} · ${esc(item.driver)}</div>
           </div>
         </div>
+        <div class="mt-2 font-bold break-words">${esc(orDash(item.keterangan))}</div>
+        <div class="mt-1 text-xs text-surface-500">Kendaraan: <span class="font-mono font-semibold uppercase">${esc(orDash(item.kendaraan))}</span></div>
+        ${cardActions(
+          actionBtn('detail', { id: item.rowId }),
+          actionBtn('print', { id: item.rowId }),
+        actionBtn('delete', { id: item.rowId }),
+        )}
       </div>
     `).join('');
 
   must('cl-count').textContent = items.length + ' dari ' + store.checklist.length + ' checklist';
 }
 
+export async function refresh(): Promise<void> {
+  const tbody = $('cl-tbody');
+  if (tbody) tbody.innerHTML = loadingRow(6);
+  try {
+    const [items, docs] = await Promise.all([api.listChecklist(), api.getCkDocuments()]);
+    store.checklist = items || [];
+    ckDocs = docs || [];
+    renderList();
+  } catch (error) {
+    report(error);
+  }
+}
+
+export async function remove(rowId: number): Promise<void> {
+  const item = store.checklist.find((i: ClistItem) => i.rowId === rowId);
+  if (!item && !ckDocs.find((d: CkHeader) => d.rowId === rowId)) {
+    toast('Data tidak ditemukan.', 'error');
+    return;
+  }
+  if (!confirm(`Hapus checklist ${item?.noDok || rowId}? Baris di spreadsheet akan dihapus.`)) return;
+  try {
+    await api.deleteCk(rowId);
+    toast('Dihapus');
+    await refresh();
+  } catch (error) {
+    report(error);
+  }
+}
+
 const CHECKLIST_LIST_PAGE: Page = {
-  title: 'Daftar Checklist',
+  title: 'Checklist',
   icon: 'list',
   html: () => `
     <div class="space-y-4">
-      <div class="card p-4 sm:p-6">
-        <div id="cl-msg" class="text-sm font-semibold text-surface-700"></div>
+      <div class="card flex flex-col gap-3 p-4 sm:flex-row">
+        ${searchBar({ id: 'cl-q', placeholder: 'Cari no. dokumen, driver, atau kendaraan...', extra: 'flex-1' })}
+        <select id="cl-filter-status" class="field w-auto text-xs font-semibold">
+          <option value="">Semua Status</option>
+          <option value="Baik">Baik</option>
+          <option value="Rusak">Rusak</option>
+        </select>
+      </div>
 
-        <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <label class="field-label" for="cl-q">Cari</label>
-            <input id="cl-q" type="search" class="field" placeholder="Cari no. dokumen, driver, atau kendaraan...">
-          </div>
-          <div>
-            <label class="field-label" for="cl-filter-status">Status</label>
-            <select id="cl-filter-status" class="field w-auto text-xs font-semibold">
-              <option value="">Semua Status</option>
-              <option value="Baik">Baik</option>
-              <option value="Rusak">Rusak</option>
-            </select>
-          </div>
-        </div>
+      <p id="cl-count" class="text-[11px] text-surface-400"></p>
 
-        <div class="mt-4">
-          <table class="w-full border-collapse text-left text-sm">
-            <thead class="bg-surface-50 text-[11px] font-bold tracking-wider text-surface-500 uppercase">
-              <tr>
-                <th class="px-4 py-3.5 whitespace-nowrap">No Dok</th>
-                <th class="px-4 py-3.5 whitespace-nowrap">Tanggal</th>
-                <th class="px-4 py-3.5 whitespace-nowrap">Driver</th>
-                <th class="px-4 py-3.5 whitespace-nowrap">Kendaraan</th>
-                <th class="px-4 py-3.5 whitespace-nowrap">Keterangan</th>
-                <th class="px-4 py-3.5 text-right whitespace-nowrap">Aksi</th>
-              </tr>
+      <div id="cl-cards" class="space-y-3 md:hidden"></div>
+
+      <div class="card hidden overflow-hidden md:block">
+        <div class="overflow-x-auto">
+          <table class="table">
+            <thead>
+              ${tableHead([
+                { label: 'No Dok' },
+                { label: 'Tanggal' },
+                { label: 'Driver' },
+                { label: 'Kendaraan' },
+                { label: 'Keterangan' },
+                { label: 'Aksi', className: 'text-right' },
+              ])}
             </thead>
             <tbody id="cl-tbody"></tbody>
           </table>
         </div>
-
-        <div class="mt-4 hidden grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" id="cl-cards"></div>
-
-        <p id="cl-count" class="text-[11px] text-surface-400"></div>
       </div>
     </div>`,
   mount(): void {
-    // Load ringkasan + dokumen lengkap checklist, lalu render setelah data siap.
+    const tbody = $('cl-tbody');
+    if (tbody) tbody.innerHTML = loadingRow(6);
     Promise.all([api.listChecklist(), api.getCkDocuments()])
       .then(([items, docs]) => {
         store.checklist = items || [];
         ckDocs = docs || [];
         renderList();
       })
-      .catch(() => toast('Gagal memuat data checklist.', 'error'));
-
-    // Bind search input
-    (field$('cl-q') ?? $('cl-q'))?.addEventListener('input', debounce(() => renderList(), 250));
-    (field$('cl-filter-status') ?? $('cl-filter-status'))?.addEventListener('change', renderList);
+      .catch((error) => report(error));
   },
-  onSearchInput: (): void => {
-    const q = (field$('cl-q')?.value ?? '').trim().toLowerCase();
-    const status = (field$('cl-filter-status')?.value ?? '');
-    const items = store.checklist.filter((item: ClistItem) => {
-      if (status && item.keterangan !== status) return false;
-      if (!q) return true;
-      return [item.noDok, item.driver, item.kendaraan, item.keterangan]
-        .join(' ')
-        .toLowerCase()
-        .includes(q);
-    });
-    // Update UI with filtered items - renderList already handles showing/hiding
-    must('cl-count').textContent = `${items.length} dari ${store.checklist.length} checklist`;
-  },
-  onFilterChange: (): void => {
-    renderList();
-  }
+  onSearchInput: (): void => renderList(),
+  onFilterChange: (): void => renderList(),
 };
 
 export { CHECKLIST_LIST_PAGE as checklistListPage };
@@ -254,6 +259,7 @@ export async function openDetail(rowId: number): Promise<void> {
     activeEditRowId = null;
     activeEditDoc = null;
     editDirty = false;
+    saveEditHandler = null;
     refreshEditPreview = null;
     bodyEl.style.overflow = prevOverflow;
     originalClose();
@@ -281,12 +287,12 @@ export async function openDetail(rowId: number): Promise<void> {
       `,
       footer: `
         <div class="flex flex-wrap gap-2">
-          <button class="btn-slate" data-action="cl-print" data-id="${rowId}">Cetak</button>
-          <button class="btn-slate" id="ck-edit-toggle" type="button">Edit</button>
+          ${actionBtn('print', { id: rowId, extra: 'px-4 py-2' })}
+          <button class="btn-slate px-4 py-2" id="ck-edit-toggle" type="button">Edit</button>
         </div>
         <div class="flex flex-wrap gap-2">
-          <button class="btn-slate hidden" id="ck-cancel-edit" type="button">Batal</button>
-          <button class="btn-primary hidden" id="ck-save-edit" type="button">Simpan</button>
+          <button class="btn-slate px-4 py-2 hidden" id="ck-cancel-edit" type="button">Batal</button>
+          ${actionBtn('save', { id: rowId, extra: 'hidden', attrs: 'id="ck-save-edit"' })}
         </div>
       `,
   });
@@ -332,21 +338,14 @@ export async function openDetail(rowId: number): Promise<void> {
 
   setupEditDamageEditor();
 
-  // Simpan perubahan lalu kembali ke tab Preview.
-  saveBtn?.addEventListener('click', async () => {
+  // Simpan perubahan lalu kembali ke tab Preview (tombol data-action="save").
+  saveEditHandler = async () => {
     if (!saveBtn || saveBtn.disabled) return;
-    const originalLabel = saveBtn.innerHTML;
-    saveBtn.disabled = true;
-    saveBtn.innerHTML =
-      '<span class="inline-flex items-center gap-2">' +
-      '<span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>' +
-      '<span>Menyimpan...</span>' +
-      '</span>';
-    saveBtn.classList.add('opacity-75', 'cursor-not-allowed');
+    setBusy(saveBtn, true);
     try {
       const body = collectCkEdit(rowId);
       await api.updateCk(body);
-      toast('Checklist diperbarui.', 'info');
+      toast('Checklist diperbarui.');
       ckDocs = await api.getCkDocuments();
       const newDoc = ckDocs.find((x: CkHeader) => x.rowId === rowId);
       if (newDoc) {
@@ -362,13 +361,11 @@ export async function openDetail(rowId: number): Promise<void> {
       previewEl.innerHTML = paperPreview(newDoc, item);
       setTab('preview');
     } catch (e) {
-      toast('Gagal menyimpan: ' + (e as Error).message, 'error');
+      report(e);
     } finally {
-      saveBtn.disabled = false;
-      saveBtn.innerHTML = originalLabel;
-      saveBtn.classList.remove('opacity-75', 'cursor-not-allowed');
+      setBusy(saveBtn, false);
     }
-  });
+  };
 }
 
 /** Cetak checklist: minta tanda tangan dulu lewat modal bersama */
@@ -465,10 +462,19 @@ function renderCkEditForm(doc: CkHeader | undefined, item: ClistItem | undefined
   html += '<div class="mt-3">';
   html += '<div class="text-xs font-bold text-surface-500 uppercase mb-1">Tanda Kerusakan</div>';
   html += '<p class="text-[11px] text-surface-400">Klik lokasi di gambar kendaraan untuk menandai. Klik penanda di daftar untuk memindahkannya.</p>';
-  html += '<div class="mt-2 grid gap-2 sm:grid-cols-2">';
-  for (const view of DAMAGE_VIEWS) {
-    html += renderDamageCanvas(view);
-  }
+  html += '<div class="mt-2 flex flex-col items-center gap-2 sm:flex-row sm:items-center">';
+  html += '<div class="text-center sm:w-1/3">';
+  html += '<div class="flex h-80 items-center justify-center rounded-lg border border-surface-200 bg-white p-1">';
+  html += '<canvas id="ce-cv-ATAS" width="330" height="706" data-view="ATAS" class="block h-auto w-auto max-h-full max-w-full cursor-crosshair rounded"></canvas>';
+  html += '</div>';
+  html += '<div class="mt-1 text-[11px] font-semibold tracking-wide text-surface-600">ATAS</div>';
+  html += '</div>';
+  html += '<div class="grid flex-1 grid-cols-2 gap-2">';
+  html += renderDamageCanvas('KIRI');
+  html += renderDamageCanvas('KANAN');
+  html += renderDamageCanvas('DEPAN');
+  html += renderDamageCanvas('BELAKANG');
+  html += '</div>';
   html += '</div>';
   html += '<div class="mt-2 flex flex-wrap items-center gap-2">';
   html += '<input id="ce-dmg-catatan" type="text" class="field w-auto flex-1 py-1.5 text-xs" placeholder="Catatan kerusakan (opsional)">';
@@ -564,7 +570,7 @@ function renderEditDamages(): void {
         '<button type="button" class="flex-1 text-left" data-ce-pick="' + index + '">' +
         esc(mark.view) + ' (' + esc(mark.x) + '%, ' + esc(mark.y) + '%)' +
         '</button>' +
-        '<button type="button" class="btn-slate text-red-600 text-xs" data-ce-del="' + index + '">Hapus</button>' +
+        '<button type="button" class="btn btn-danger" data-ce-del="' + index + '">Hapus</button>' +
         '</div>' +
         '<input type="text" class="field mt-1 w-full px-2 py-1 text-[11px]" data-ce-note="' + index + '"' +
         ' placeholder="Catatan kerusakan" value="' + esc(mark.catatan ?? '') + '">' +

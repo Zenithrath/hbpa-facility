@@ -76,7 +76,8 @@ function doGet(e) {
   var param = (e && e.parameter) ? e.parameter : {};
 
   // Sajikan hanya halaman input Checklist Kendaraan.
-  if (param.page !== undefined) {
+  // Rute halaman HTML hanya saat tanpa ?action=; paginasi JSON juga memakai ?page=N.
+  if (param.page !== undefined && param.action === undefined) {
     if (param.page !== 'checklist') {
       return ContentService.createTextOutput('Halaman tidak ditemukan.')
         .setMimeType(ContentService.MimeType.TEXT);
@@ -119,6 +120,7 @@ function dispatch_(action, param) {
     case 'getInventarisData':   return getInventarisData_();
     case 'getMasters':          return getMasters_();
     case 'saveInventaris':      return saveInventaris_(parseBody_(param));
+    case 'deleteInventaris':   return deleteSheetRow_('inventaris', param.rowId || param.id);
 
     // Fitur Daily Report / Checklist Kendaraan.
     case 'getDrData':         return getDrData_();
@@ -126,9 +128,11 @@ function dispatch_(action, param) {
     case 'saveDr':            return saveDr_(parseBody_(param));
     case 'updateDrStatus':    return updateDocStatus_('dr', parseBody_(param));
     case 'updateDr':          return updateDr_(parseBody_(param));
+    case 'deleteDr':          return deleteSheetRow_('dr', param.rowId || param.id);
     case 'getCkData':         return getCkData_();
     case 'saveCk':            return saveCk_(parseBody_(param));
     case 'updateCk':          return updateCk_(parseBody_(param));
+    case 'deleteCk':          return deleteSheetRow_('ck', param.rowId || param.id);
     case 'ckPdf':              return ckPdfForRow_(param.rowId || param.id);
     case 'updateCkStatus':    return updateDocStatus_('ck', parseBody_(param));
 
@@ -699,6 +703,22 @@ function deleteRequest_(rowId) {
     clearStatsCache_();
   });
 
+  return ok_({ message: 'Dihapus.' });
+}
+
+/** Hapus satu baris spreadsheet berdasarkan rowId, untuk modul non-transport. */
+function deleteSheetRow_(key, rowId) {
+  rowId = Number(rowId);
+  if (!rowId) return fail_('rowId wajib diisi.');
+
+  withLock_(function () {
+    var sh = sheet_(key);
+    if (rowId < 2 || rowId > sh.getLastRow()) throw new Error('Data tidak ditemukan.');
+    sh.deleteRow(rowId);
+    colCache_ = {};
+  });
+
+  clearStatsCache_();
   return ok_({ message: 'Dihapus.' });
 }
 

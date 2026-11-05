@@ -83,6 +83,118 @@ export function icon(name: keyof typeof ICON_PATHS | string, cls = 'w-4 h-4'): s
   );
 }
 
+/* ---------- Tombol aksi ---------- */
+
+/**
+ * Kata kerja tombol. Semua halaman memakai daftar yang sama, jadi tombol
+ * dengan fungsi sama selalu punya nama, gaya, ikon, dan data-action yang sama.
+ */
+export type ActionVerb =
+  | 'detail'
+  | 'print'
+  | 'save'
+  | 'delete'
+  | 'email'
+  | 'new'
+  | 'create'
+  | 'export'
+  | 'refresh'
+  | 'all-good'
+  | 'add-row'
+  | 'add-mark'
+  | 'reset'
+  | 'select-all'
+  | 'clear'
+  | 'send'
+  | 'opt';
+
+interface VerbStyle {
+  label: string;
+  cls: string;
+  icon?: string;
+}
+
+const VERB_STYLE: Record<ActionVerb, VerbStyle> = {
+  detail: { label: 'Detail', cls: 'btn-detail' },
+  print: { label: 'Cetak', cls: 'btn-print', icon: 'print' },
+  save: { label: 'Simpan', cls: 'btn-primary' },
+  delete: { label: 'Hapus', cls: 'btn-danger' },
+  email: { label: 'Email', cls: 'btn-slate', icon: 'mail' },
+  new: { label: 'Permintaan Baru', cls: 'btn-primary', icon: 'plus' },
+  create: { label: 'Simpan Permintaan', cls: 'btn-primary' },
+  export: { label: 'Ekspor CSV', cls: 'btn-slate', icon: 'file' },
+  refresh: { label: 'Refresh Data', cls: 'btn-slate', icon: 'refresh' },
+  'all-good': { label: 'Tandai Semua Baik', cls: 'btn-slate' },
+  'add-row': { label: 'Tambah Baris', cls: 'btn-slate', icon: 'plus' },
+  'add-mark': { label: 'Catat Penanda', cls: 'btn-slate', icon: 'plus' },
+  reset: { label: 'Formulir Baru', cls: 'btn-slate' },
+  'select-all': { label: 'Pilih Semua', cls: 'btn-slate' },
+  clear: { label: 'Kosongkan', cls: 'btn-slate' },
+  send: { label: 'Kirim Email', cls: 'btn-primary', icon: 'mail' },
+  opt: { label: '', cls: 'btn-slate' },
+};
+
+export interface ActionButtonOptions {
+  id?: number | string;
+  label?: string;
+  /** null = tanpa ikon. */
+  icon?: string | null;
+  /** Kelas tambahan, mis. ukuran lebih besar di footer drawer. */
+  extra?: string;
+  attrs?: string;
+}
+
+/** Tombol aksi tunggal. Gaya dan label mengikuti verb-nya. */
+export function actionBtn(verb: ActionVerb, options: ActionButtonOptions = {}): string {
+  const style = VERB_STYLE[verb];
+  const label = options.label ?? style.label;
+  const iconName = options.icon === null ? null : (options.icon ?? style.icon);
+  const cls = ['btn', style.cls, options.extra].filter(Boolean).join(' ');
+  const idAttr = options.id === undefined ? '' : ` data-id="${esc(options.id)}"`;
+  const attrs = options.attrs ? ` ${options.attrs}` : '';
+  const body = `${iconName ? icon(iconName, 'h-3.5 w-3.5') : ''}${esc(label)}`;
+  return `<button type="button" class="${cls}" data-action="${verb}"${idAttr}${attrs}>${body}</button>`;
+}
+
+/** Kotak pencarian yang sama di semua halaman daftar. */
+export function searchBar(options: { id: string; placeholder: string; extra?: string }): string {
+  const extra = options.extra ? ` ${options.extra}` : '';
+  return `<div class="relative${extra}">
+    ${icon('search', 'h-4 w-4 text-surface-400 absolute top-1/2 left-3.5 -translate-y-1/2')}
+    <input id="${esc(options.id)}" type="search" class="field pl-10" placeholder="${esc(options.placeholder)}" autocomplete="off">
+  </div>`;
+}
+
+/* ---------- Tabel daftar ---------- */
+
+export interface TableColumn {
+  label: string;
+  /** Kelas tambahan untuk <th>, mis. 'text-right'. */
+  className?: string;
+}
+
+/** Satu header tabel untuk semua halaman (gaya dari .table di styles.css). */
+export function tableHead(columns: readonly TableColumn[]): string {
+  return `<tr>${columns
+    .map((column) => `<th${column.className ? ` class="${column.className}"` : ''}>${esc(column.label)}</th>`)
+    .join('')}</tr>`;
+}
+
+/** Sel aksi rata kanan yang tetap diam saat tabel di-scroll horizontal.
+ *  Tombol selalu urut ke bawah (satu tombol per baris), seperti kolom aksi
+ *  di halaman Transport. */
+export function actionCell(...buttons: string[]): string {
+  return (
+    `<td class="sticky-col px-4 py-3 text-right whitespace-nowrap">` +
+    `<div class="flex flex-col items-end gap-1.5">${buttons.join('')}</div></td>`
+  );
+}
+
+/** Baris tombol di kartu (tampilan layar kecil). */
+export function cardActions(...buttons: string[]): string {
+  return `<div class="mt-3 flex flex-wrap gap-2">${buttons.join('')}</div>`;
+}
+
 /* ---------- Toast ---------- */
 
 let toastTimer: number | undefined;
@@ -98,6 +210,109 @@ export function toast(message: string, kind: 'info' | 'error' = 'info'): void {
 
   window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => el.classList.add('hidden'), kind === 'error' ? 5000 : 3000);
+}
+
+/* ---------- Pesan baku ---------- */
+
+/**
+ * Kosakata alert bersama untuk semua halaman. Pesan sukses/gagal memakai
+ * daftar ini supaya terdengar seirama dan tidak membingungkan user.
+ */
+export const MSG = {
+  loading: 'Memuat data...',
+  saving: 'Menyimpan...',
+  sending: 'Mengirim...',
+  saved: 'Tersimpan.',
+  deleted: 'Dihapus.',
+  emailed: 'Email terkirim.',
+  notLoaded: 'Data belum dimuat. Klik Refresh terlebih dahulu.',
+  notFound: 'Data tidak ditemukan. Klik Refresh terlebih dahulu.',
+} as const;
+
+/** Ubah error apa pun menjadi teks pendek yang bisa ditampilkan. */
+export function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** Tampilkan overlay loading global selama request panjang. */
+export function setPageLoading(on: boolean): void {
+  $('loading')?.classList.toggle('hidden', !on);
+}
+
+/**
+ * Tombol yang sedang bekerja: dinonaktifkan, diberi spinner, lalu dipulihkan.
+ * Dipakai semua tombol simpan supaya perilakunya seragam.
+ */
+export function setBusy(button: HTMLElement | null, busy: boolean, label = MSG.saving): void {
+  if (!(button instanceof HTMLButtonElement)) return;
+  if (busy) {
+    if (button.dataset.idleLabel === undefined) button.dataset.idleLabel = button.innerHTML;
+    button.disabled = true;
+    button.classList.add('opacity-75', 'cursor-not-allowed');
+    button.innerHTML =
+      `<span class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"></span>` +
+      `<span>${esc(label)}</span>`;
+    return;
+  }
+  button.disabled = false;
+  button.classList.remove('opacity-75', 'cursor-not-allowed');
+  if (button.dataset.idleLabel !== undefined) {
+    button.innerHTML = button.dataset.idleLabel;
+    delete button.dataset.idleLabel;
+  }
+}
+
+/** Satu-satunya toast untuk kegagalan tak terduga (jaringan, server, sheet). */
+export function report(error: unknown): void {
+  console.error(error);
+  toast(`Gagal: ${errorText(error)}`, 'error');
+}
+
+/* ---------- Validasi ---------- */
+
+/** Kolom wajib yang dicek sebelum disimpan. `id` = id elemen di drawer/halaman. */
+export interface RequiredCheck {
+  id: string;
+  label: string;
+}
+
+/**
+ * Validasi wajib isi yang dipakai semua halaman:
+ *   - kolom kosong ditandai garis merah (.is-invalid)
+ *   - fokus pindah ke kolom pertama yang kosong
+ *   - toast menyebut kolomnya: "X wajib diisi." / "Lengkapi dulu: X, Y."
+ * Return false kalau ada yang masih kosong.
+ */
+export function validateRequired(checks: readonly RequiredCheck[]): boolean {
+  const missing: RequiredCheck[] = [];
+
+  for (const check of checks) {
+    const el = document.getElementById(check.id);
+    const value =
+      el instanceof HTMLInputElement ||
+      el instanceof HTMLTextAreaElement ||
+      el instanceof HTMLSelectElement
+        ? el.value
+        : (el?.textContent ?? '');
+    const empty = !value.trim();
+    el?.classList.toggle('is-invalid', empty);
+    if (empty) missing.push(check);
+  }
+
+  if (!missing.length) return true;
+
+  const labels = missing.map((check) => check.label);
+  const firstId = missing[0]?.id;
+  const firstEl = firstId ? document.getElementById(firstId) : null;
+  if (firstEl instanceof HTMLElement) firstEl.focus();
+
+  toast(
+    missing.length === 1
+      ? `${labels[0]} wajib diisi.`
+      : `Lengkapi dulu: ${labels.join(', ')}.`,
+    'error',
+  );
+  return false;
 }
 
 export interface NoticeDialogOptions {
@@ -150,11 +365,32 @@ export interface DrawerContent {
   title: string;
   body: string;
   footer?: string;
+  /** 'a5' = pas untuk pratinjau lembar A5, 'xl' = lembar A4. */
+  size?: 'md' | 'a5' | 'xl';
 }
 
+const DRAWER_WIDTH: Record<NonNullable<DrawerContent['size']>, string> = {
+  md: 'max-w-lg',
+  a5: 'max-w-[640px]',
+  xl: 'max-w-4xl',
+};
+
+let drawerHideTimer: number | undefined;
+
 export const drawer = {
-  open({ title, body, footer = '' }: DrawerContent): void {
+  open({ title, body, footer = '', size = 'md' }: DrawerContent): void {
+    // Batalkan animasi close yang masih berjalan; kalau tidak, timer lama
+    // bisa menyembunyikan drawer yang baru saja dibuka.
+    if (drawerHideTimer !== undefined) {
+      window.clearTimeout(drawerHideTimer);
+      drawerHideTimer = undefined;
+    }
     must('drawer-title').textContent = title;
+    const panel = $<HTMLElement>('drawer-panel');
+    if (panel) {
+      panel.classList.remove(...Object.values(DRAWER_WIDTH));
+      panel.classList.add(DRAWER_WIDTH[size]);
+    }
     const bodyEl = must('drawer-body');
     bodyEl.innerHTML = body;
     bodyEl.scrollTop = 0;
@@ -170,7 +406,10 @@ export const drawer = {
     const el = $<HTMLElement>('drawer');
     if (!el || el.classList.contains('hidden')) return;
     el.classList.remove('open');
-    window.setTimeout(() => el.classList.add('hidden'), 200);
+    drawerHideTimer = window.setTimeout(() => {
+      el.classList.add('hidden');
+      drawerHideTimer = undefined;
+    }, 200);
   },
 
   isOpen(): boolean {
@@ -475,7 +714,9 @@ function confirmSignatures(): void {
     sigs[slot.key] = {
       name,
       role,
-      image: name ? (sigDrawers[slot.key]?.data() ?? null) : null,
+      // Gambar tetap disimpan walau nama dikosongkan, supaya kolom tanda
+      // tangan opsional (mis. "Acknowledged by") tidak hilang saat dicetak.
+      image: sigDrawers[slot.key]?.data() ?? null,
     };
   }
   const cb = sigOnConfirm;
@@ -498,7 +739,7 @@ export function askSignature(
     sigModalEl.id = 'sig-modal';
     sigModalEl.className = 'no-print fixed inset-0 z-[60] hidden';
     sigModalEl.innerHTML = `
-      <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" data-sig-cancel></div>
+      <div class="absolute inset-0 bg-black/40" data-sig-cancel></div>
       <div class="absolute top-1/2 left-1/2 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white p-6 shadow-2xl">
         <h3 class="text-base font-bold">Tanda Tangan</h3>
         <p class="mt-1 text-sm text-surface-500" id="sig-title"></p>
@@ -588,7 +829,7 @@ export function debounce<T extends unknown[]>(
   };
 }
 
-export function loadingRow(colspan: number, label = 'Memuat data...'): string {
+export function loadingRow(colspan: number, label: string = MSG.loading): string {
   return (
     `<tr><td colspan="${colspan}" class="py-10 text-center text-surface-400">` +
     `<span class="inline-block animate-spin rounded-full border-2 border-primary-500 border-t-transparent mb-2 h-5 w-5"></span>` +
@@ -598,4 +839,14 @@ export function loadingRow(colspan: number, label = 'Memuat data...'): string {
 
 export function emptyRow(colspan: number, label: string): string {
   return `<tr><td colspan="${colspan}" class="py-10 text-center text-surface-400">${esc(label)}</td></tr>`;
+}
+
+/** Pengganti baris tabel saat daftar masih dimuat (tampilan kartu). */
+export function loadingCard(label: string = MSG.loading): string {
+  return `<div class="card p-8 text-center text-sm text-surface-400">${esc(label)}</div>`;
+}
+
+/** Pengganti baris tabel saat daftar kosong (tampilan kartu). */
+export function emptyCard(label: string): string {
+  return `<div class="card p-8 text-center text-sm text-surface-400">${esc(label)}</div>`;
 }
