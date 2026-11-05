@@ -27,6 +27,11 @@
  */
 
 var CONFIG = {
+  // ID spreadsheet target. WAJIB diisi agar Web App bisa dibuka oleh pengguna publik
+  // (getActiveSpreadsheet() gagal untuk Viewer). Ambil dari URL:
+  // https://docs.google.com/spreadsheets/d/[ID_ADA_DI_SINI]/edit
+  spreadsheetId: '',
+
   timezone: 'Asia/Makassar',
 
   tabs: {
@@ -89,6 +94,13 @@ function doGet(e) {
       return ContentService.createTextOutput('Halaman checklist belum tersedia.')
         .setMimeType(ContentService.MimeType.TEXT);
     }
+  }
+
+  // Halaman standalone checklist (form untuk user). Tidak butuh API di sini;
+  // data disimpan lewat project utama (VITE_GAS_URL).
+  if (param.page === 'checklist') {
+    return HtmlService.createHtmlOutputFromFile('checklist')
+      .setTitle('Checklist Kendaraan');
   }
 
   var action = param.action || 'getBootstrap';
@@ -159,7 +171,7 @@ function fail_(message) { return { success: false, message: message }; }
    ============================================================================ */
 
 function sheet_(key) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = (CONFIG.spreadsheetId ? SpreadsheetApp.openById(CONFIG.spreadsheetId) : SpreadsheetApp.getActiveSpreadsheet());
   var name = CONFIG.tabs[key];
   var sh = name ? ss.getSheetByName(name) : ss.getActiveSheet();
   if (!sh) throw new Error('Tab "' + (name || '(tab aktif)') + '" tidak ditemukan. Periksa CONFIG.tabs.');
@@ -1159,7 +1171,7 @@ function onFormSubmitTrigger() {
  * bisa memastikan CONFIG.tabs dan COLS masih cocok dengan spreadsheet.
  */
 function laporkan() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = (CONFIG.spreadsheetId ? SpreadsheetApp.openById(CONFIG.spreadsheetId) : SpreadsheetApp.getActiveSpreadsheet());
   var out = ['SPREADSHEET: ' + ss.getId(), ''];
 
   ss.getSheets().forEach(function (sh) {
@@ -1192,7 +1204,7 @@ function setup() {
  * Jika sheet tidak ada, akan mencoba menemukan/menyiapkan otomatis.
  */
 function sheet_(key) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = (CONFIG.spreadsheetId ? SpreadsheetApp.openById(CONFIG.spreadsheetId) : SpreadsheetApp.getActiveSpreadsheet());
   var tabName = CONFIG.tabs[key];
   var sh = ss.getSheetByName(tabName);
 
@@ -1234,7 +1246,7 @@ function sheet_(key) {
  * - TAB_Item (Master Item/Barang)
  */
 function setupTabsBaru() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = (CONFIG.spreadsheetId ? SpreadsheetApp.openById(CONFIG.spreadsheetId) : SpreadsheetApp.getActiveSpreadsheet());
   var drTab = CONFIG.tabs.dr;
   var ckTab = CONFIG.tabs.ck;
   var itemTab = CONFIG.tabs.mItem;
@@ -1957,7 +1969,7 @@ function drRowHasContent_(row) {
 }
 
 function drCkFolder_() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = (CONFIG.spreadsheetId ? SpreadsheetApp.openById(CONFIG.spreadsheetId) : SpreadsheetApp.getActiveSpreadsheet());
   var folderId = PropertiesService.getScriptProperties().getProperty('DRCK_FOLDER_ID');
   if (folderId) {
     try {
