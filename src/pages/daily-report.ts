@@ -9,7 +9,7 @@
 import { api } from '../api';
 import type { DrHeader } from '../schema';
 import { store } from '../store';
-import { clampPage, slicePage, pagerHtml, bindPager } from '../pagination';
+import { PAGE_SIZE, clampPage, slicePage, pagerHtml, bindPager, virtualize } from '../pagination';
 import {
   $,
   actionBtn,
@@ -90,7 +90,10 @@ function visible(): DrHeader[] {
 export function renderList(): void {
   const filtered = visible();
   drPage = clampPage(drPage, filtered.length);
-  const rows = slicePage(filtered, drPage);
+  const rowsAll = slicePage(filtered, drPage);
+  const vis = virtualize(rowsAll, (drPage - 1) * PAGE_SIZE);
+  const rows = vis.items;
+  void vis.start;
   const tbody = $('dr-tbody');
   const cards = $('dr-cards');
   if (!tbody || !cards) return;
@@ -384,4 +387,5 @@ export function printPdf(rowId: number, sigs?: Signatures): void {
 
   print.run();
 }
+
 

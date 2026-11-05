@@ -14,7 +14,7 @@ import {
   type TransportKey,
 } from '../schema';
 import { store } from '../store';
-import { PAGE_SIZE, clampPage, slicePage, pagerHtml, bindPager } from '../pagination';
+import { PAGE_SIZE, clampPage, slicePage, pagerHtml, bindPager, virtualize } from '../pagination';
 import {
   $,
   actionBtn,
@@ -78,7 +78,10 @@ function visible(): TransportItem[] {
 export function renderList(): void {
   const filtered = visible();
   transportPage = clampPage(transportPage, filtered.length);
-  const rows = slicePage(filtered, transportPage);
+  const rowsAll = slicePage(filtered, transportPage);
+  const vis = virtualize(rowsAll, (transportPage - 1) * PAGE_SIZE);
+  const rows = vis.items;
+  void vis.start;
   const tbody = $('tbody');
   const cards = $('cards');
   if (!tbody || !cards) return;
@@ -341,4 +344,5 @@ function todayLong(): string {
     year: 'numeric',
   });
 }
+
 

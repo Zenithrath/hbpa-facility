@@ -7,7 +7,7 @@
 
 import { api } from '../api';
 import { INVENTARIS_FIELDS, KONDISI_OPTIONS, type InventarisItem } from '../schema';
-import { clampPage, slicePage, pagerHtml, bindPager } from '../pagination';
+import { PAGE_SIZE, clampPage, slicePage, pagerHtml, bindPager, virtualize } from '../pagination';
 import { store } from '../store';
 import {
   $,
@@ -98,7 +98,10 @@ function lines(items: InventarisItem['items']): string {
 export function renderList(): void {
   const filtered = visible();
   invPage = clampPage(invPage, filtered.length);
-  const rows = slicePage(filtered, invPage);
+  const rowsAll = slicePage(filtered, invPage);
+  const vis = virtualize(rowsAll, (invPage - 1) * PAGE_SIZE);
+  const rows = vis.items;
+  void vis.start;
   const tbody = $('inv-tbody');
   const cards = $('inv-cards');
   if (!tbody || !cards) return;
@@ -372,3 +375,4 @@ export function printRow(rowId: number, sigs?: Signatures): void {
 
   print.run();
 }
+
