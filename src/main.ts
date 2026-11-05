@@ -672,23 +672,22 @@ function wireInputs(page: Page): void {
 
 async function refreshAll(): Promise<void> {
   invalidateAll();
-  if (current === 'manpower-requisition' || current === 'job-completion') {
-    await PAGES[current].mount?.();
-    return;
-  }
-  try {
-    const boot = await api.bootstrap();
-    store.stats = boot.stats;
-    store.departments = boot.departments;
-    store.missingFields = boot.missingFields;
-    store.itemColumns = boot.itemColumns;
-    store.ready = true;
-    renderNotice(boot.missingFields);
-  } catch (error) {
+  const [bootResult] = await Promise.allSettled([
+    api.bootstrap(),
+    PAGES[current].mount?.(),
+  ]);
+  if (bootResult.status === 'rejected') {
+    const error = bootResult.reason;
     toast(error instanceof Error ? error.message : String(error), 'error');
     throw error;
   }
-  await PAGES[current].mount?.();
+  const boot = bootResult.value;
+  store.stats = boot.stats;
+  store.departments = boot.departments;
+  store.missingFields = boot.missingFields;
+  store.itemColumns = boot.itemColumns;
+  store.ready = true;
+  renderNotice(boot.missingFields);
 }
 
 function renderNotice(missing: string[]): void {
@@ -756,6 +755,16 @@ async function boot(): Promise<void> {
   } catch {
     // Pesan sudah ditampilkan lewat toast oleh refreshAll.
   }
+
+  // Preload data halaman lain di latar belakang supaya navigasi instan.
+  window.setTimeout(() => {
+    Promise.allSettled([
+      api.listInventaris(),
+      api.getCkDocuments(),
+      api.getDrDocuments(),
+      api.getMasters(),
+    ]).catch(() => {});
+  }, 300);
 }
 
 void boot();
