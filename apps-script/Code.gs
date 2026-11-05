@@ -30,7 +30,7 @@ var CONFIG = {
   // ID spreadsheet target. WAJIB diisi agar Web App bisa dibuka oleh pengguna publik
   // (getActiveSpreadsheet() gagal untuk Viewer). Ambil dari URL:
   // https://docs.google.com/spreadsheets/d/[ID_ADA_DI_SINI]/edit
-  spreadsheetId: '',
+  spreadsheetId: '1VSQ-0tLqGjR-L21sDu-vF3it2kl2C-GrN_QqKJCKJJ4',
 
   timezone: 'Asia/Makassar',
 
