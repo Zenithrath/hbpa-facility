@@ -15,7 +15,6 @@ import {
   askSignature,
   drawer,
   esc,
-  field$,
   icon,
   must,
   searchBar,
@@ -23,7 +22,7 @@ import {
   tableHead,
   toast,
 } from './ui';
-import * as overview from './pages/overview';
+
 import * as transport from './pages/transport';
 import * as inventaris from './pages/inventaris';
 import * as dailyReport from './pages/daily-report';
@@ -97,82 +96,7 @@ interface Page {
   html(): string;
   mount?(): void | Promise<void>;
   onSearchInput?(): void;
-  onFilterChange?(): void;
 }
-
-const OVERVIEW: Page = {
-  title: 'Overview',
-  icon: 'dashboard',
-  html: () => `
-    <div class="space-y-6">
-      <div>
-        <h3 class="text-xl font-extrabold sm:text-2xl">${esc(CONFIG.COMPANY_NAME)}</h3>
-        <p class="mt-0.5 text-sm text-surface-500">Dashboard ${esc(CONFIG.APP_NAME)}</p>
-      </div>
-
-      <div id="stats" class="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6"></div>
-
-      <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div class="card overflow-hidden">
-          <div class="flex items-center justify-between gap-2 border-b border-surface-100 px-6 py-4">
-            <div class="flex items-center gap-2">
-              ${icon('file', 'w-4 h-4 text-primary-600')}
-              <h4 class="text-sm font-bold">Ringkasan Transportasi</h4>
-            </div>
-            <button class="text-xs font-semibold text-primary-700 hover:underline" data-page="transport">Lihat semua</button>
-          </div>
-          <div id="sum-transport" class="divide-y divide-surface-100"></div>
-        </div>
-        <div class="card overflow-hidden">
-          <div class="flex items-center justify-between gap-2 border-b border-surface-100 px-6 py-4">
-            <div class="flex items-center gap-2">
-              ${icon('box', 'w-4 h-4 text-primary-600')}
-              <h4 class="text-sm font-bold">Ringkasan Inventaris</h4>
-            </div>
-            <button class="text-xs font-semibold text-primary-700 hover:underline" data-page="inventaris">Lihat semua</button>
-          </div>
-          <div id="sum-inventaris" class="divide-y divide-surface-100"></div>
-        </div>
-      </div>
-
-      <div class="card overflow-hidden">
-        <div class="flex items-center gap-2 border-b border-surface-100 px-6 py-4">
-          ${icon('send', 'w-4 h-4 text-emerald-600')}
-          <h4 class="text-sm font-bold">Kirim Info Permintaan via Email</h4>
-        </div>
-        <div class="space-y-4 p-4 sm:p-6">
-          <div>
-            <label class="field-label" for="mail-q">Cari Permintaan</label>
-            ${searchBar({ id: 'mail-q', placeholder: 'Cari nama, no., divisi, tujuan, atau plat...', extra: 'mt-1.5' })}
-          </div>
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <p class="text-xs text-surface-500">Centang yang mau dikirim.
-              <span id="email-count" class="font-bold text-emerald-700">0 dipilih</span></p>
-            <div class="flex gap-2">
-              ${actionBtn('select-all')}
-              ${actionBtn('clear')}
-            </div>
-          </div>
-          <div id="email-list" class="max-h-96 divide-y divide-surface-100 overflow-y-auto rounded-xl border border-surface-200"></div>
-          ${actionBtn('send', { extra: 'px-6 py-2.5 text-sm' })}
-        </div>
-      </div>
-    </div>`,
-  mount() {
-    overview.renderStats();
-    void overview.refresh();
-  },
-  onSearchInput() {
-    // Daftar pendek: cukup saring di sisi browser, tidak perlu memanggil API.
-    const q = (field$('mail-q')?.value ?? '').trim().toLowerCase();
-    const box = $('email-list');
-    if (!box) return;
-    for (const row of box.querySelectorAll<HTMLElement>('label[data-row]')) {
-      const text = (row.dataset.row ?? '').toLowerCase();
-      row.classList.toggle('hidden', Boolean(q) && !text.includes(q));
-    }
-  },
-};
 
 const TRANSPORT_PAGE: Page = {
   title: 'Transport Requests',
@@ -181,16 +105,6 @@ const TRANSPORT_PAGE: Page = {
     <div class="space-y-4">
       <div class="card flex flex-col gap-3 p-4 sm:flex-row">
         ${searchBar({ id: 'q', placeholder: 'Cari nama, no., divisi, tujuan, plat...', extra: 'flex-1' })}
-        <select id="filter-status" class="field w-auto text-xs font-semibold">
-          <option value="">Semua Status</option>
-          <option value="Pending">Pending</option>
-          <option value="Disetujui">Disetujui</option>
-          <option value="Ditolak">Ditolak</option>
-          <option value="Selesai">Selesai</option>
-        </select>
-        <select id="filter-dept" class="field w-auto text-xs font-semibold"></select>
-        ${actionBtn('export', { extra: 'shrink-0' })}
-        ${actionBtn('new', { extra: 'shrink-0' })}
       </div>
 
       <p id="count" class="text-[11px] text-surface-400"></p>
@@ -211,7 +125,6 @@ const TRANSPORT_PAGE: Page = {
     void transport.refresh();
   },
   onSearchInput: () => transport.renderList(),
-  onFilterChange: () => transport.renderList(),
 };
 
 const INVENTARIS_PAGE: Page = {
@@ -223,12 +136,6 @@ const INVENTARIS_PAGE: Page = {
 
       <div class="card flex flex-col gap-3 p-4 sm:flex-row">
         ${searchBar({ id: 'inv-q', placeholder: 'Cari nama, no. dokumen, kontak, atau barang...', extra: 'flex-1' })}
-        <select id="inv-status" class="field w-auto text-xs font-semibold">
-          <option value="">Semua Status</option>
-          <option value="Dipinjam">Dipinjam</option>
-          <option value="Overdue">Overdue</option>
-          <option value="Selesai">Selesai</option>
-        </select>
       </div>
 
       <p id="inv-count" class="text-[11px] text-surface-400"></p>
@@ -261,7 +168,6 @@ const INVENTARIS_PAGE: Page = {
     void inventaris.refresh();
   },
   onSearchInput: () => inventaris.renderList(),
-  onFilterChange: () => inventaris.renderList(),
 };
 
 const DAILY_REPORT_PAGE: Page = {
@@ -302,11 +208,9 @@ const DAILY_REPORT_PAGE: Page = {
     void dailyReport.refresh();
   },
   onSearchInput: () => dailyReport.renderList(),
-  onFilterChange: () => dailyReport.renderList(),
 };
 
 const PAGES = {
-  overview: OVERVIEW,
   transport: TRANSPORT_PAGE,
   inventaris: INVENTARIS_PAGE,
   daily: DAILY_REPORT_PAGE,
@@ -318,7 +222,7 @@ const PAGES = {
 type PageKey = keyof typeof PAGES;
 
 const NAV_SECTIONS = [
-  { label: 'PEMINJAMAN', pages: ['overview', 'transport', 'inventaris', 'daily', 'checklist-list'] },
+  { label: 'PEMINJAMAN', pages: ['transport', 'inventaris', 'daily', 'checklist-list'] },
   { label: 'MANPOWER', pages: ['manpower-requisition', 'job-completion'] },
 ] as const satisfies ReadonlyArray<{ label: string; pages: readonly PageKey[] }>;
 
@@ -611,18 +515,9 @@ const GLOBAL_ACTIONS: Record<string, Handler> = {
  * mencetak. Handler dipilih dari halaman yang sedang aktif.
  */
 const PAGE_ACTIONS: Record<PageKey, Record<string, Handler>> = {
-  overview: {
-    pick: (el, id) => overview.toggle(id, (el as HTMLInputElement).checked),
-    'select-all': () => overview.selectAll(true),
-    clear: () => overview.selectAll(false),
-    send: (el) => overview.sendSelected(el as HTMLButtonElement),
-  },
-
   transport: {
     detail: (_el, id) => transport.openDrawer(id),
     save: (_el, id) => transport.save(id),
-    create: () => transport.create(),
-    new: () => transport.openCreate(),
     print: (el, id) => {
     const fromDrawer = el.dataset.from === 'drawer';
     const prefill = store.transport.find((t) => t.rowId === id)?.nama ?? '';
@@ -637,7 +532,6 @@ const PAGE_ACTIONS: Record<PageKey, Record<string, Handler>> = {
   },
   email: (el, id) => transport.email([id], el as HTMLButtonElement),
   delete: (_el, id) => transport.remove(id),
-  export: () => transport.exportCsv(),
   },
 
   inventaris: {
@@ -708,11 +602,11 @@ const PAGE_ACTIONS: Record<PageKey, Record<string, Handler>> = {
    ROUTER
    ===================================================== */
 
-let current: PageKey = 'overview';
+let current: PageKey = 'transport';
 
 function pageKeyFromHash(): PageKey {
   const key = (location.hash.replace(/^#\/?/, '').split('?')[0] ?? '') as PageKey;
-  return key in PAGES ? key : 'overview';
+  return key in PAGES ? key : 'transport';
 }
 
 function renderNav(): void {
@@ -762,11 +656,8 @@ function toggleSidebar(force?: boolean): void {
 }
 
 function wireInputs(page: Page): void {
-  for (const id of ['q', 'inv-q', 'mail-q', 'dr-q', 'cl-q', 'mr-search', 'mc-search']) {
+  for (const id of ['q', 'inv-q', 'dr-q', 'cl-q', 'mr-search', 'mc-search']) {
     $(id)?.addEventListener('input', () => page.onSearchInput?.());
-  }
-  for (const id of ['filter-status', 'filter-dept', 'inv-status', 'dr-status', 'cl-filter-status']) {
-    $(id)?.addEventListener('change', () => page.onFilterChange?.());
   }
 }
 
@@ -852,7 +743,7 @@ async function boot(): Promise<void> {
     if (e.key === 'Escape') drawer.close();
   });
 
-  if (!location.hash) location.hash = 'overview';
+  if (!location.hash) location.hash = 'transport';
   render(pageKeyFromHash());
 
   try {

@@ -57,11 +57,8 @@ export function badge(item: InventarisItem): string {
 
 function visible(): InventarisItem[] {
   const q = (field$('inv-q')?.value ?? '').trim().toLowerCase();
-  const status = field$('inv-status')?.value ?? '';
 
   return store.inventaris.filter((item) => {
-    const derived = statusOf(item);
-    if (status && derived !== status) return false;
     if (!q) return true;
     const barang = item.items.map((i) => i.barang).join(' ');
     return [item.noDok, item.nama, item.kontak, item.keperluan, barang]

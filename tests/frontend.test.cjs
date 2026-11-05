@@ -283,7 +283,7 @@ async function run() {
   ok('tidak ada exception', emptyErrors.length === 0);
   ok('pesan API_URL kosong muncul', emptyText().includes('API_URL belum diisi'));
   ok('sidebar tetap dirender', Boolean(emptyDoc.getElementById('sidebar')));
-  ok('7 menu navigasi (5 Facility + 2 Manpower)', emptyDoc.querySelectorAll('#nav [data-page]').length === 7);
+  ok('6 menu navigasi (4 Peminjaman + 2 Manpower)', emptyDoc.querySelectorAll('#nav [data-page]').length === 6);
   ok('section PEMINJAMAN tampil', emptyDoc.getElementById('nav')?.textContent.includes('PEMINJAMAN'));
   ok('section MANPOWER tampil', emptyDoc.getElementById('nav')?.textContent.includes('MANPOWER'));
 
@@ -297,18 +297,10 @@ async function run() {
   const errors = uncaught;
   await tick(200);
 
-  console.log('\n--- halaman Overview ---');
-  ok('judul halaman', doc.getElementById('title').textContent === 'Overview');
-  eq('jumlah kartu statistik', doc.querySelectorAll('#stats > div').length, 6);
-  eq('total permintaan', doc.getElementById('s-total').textContent, '2');
-  eq('pending', doc.getElementById('s-pending').textContent, '1');
-  eq('disetujui', doc.getElementById('s-approved').textContent, '1');
-  eq('2 permintaan di daftar email', doc.querySelectorAll('#email-list label').length, 2);
+  console.log('\n--- boot ke halaman pertama ---');
+  eq('halaman pertama = Transport Requests', doc.getElementById('title').textContent, 'Transport Requests');
+  ok('tidak ada tombol Overview di navigasi', !doc.querySelector('[data-page="overview"]'));
   ok('tidak ada peringatan kolom', !text().includes('tidak ditemukan di spreadsheet'));
-  eq('ringkasan transport', doc.querySelectorAll('#sum-transport [data-sum-row]').length, 2);
-  ok('ringkasan transport memuat nomor surat', doc.getElementById('sum-transport').textContent.includes('TR/202610/001'));
-  eq('ringkasan inventaris', doc.querySelectorAll('#sum-inventaris [data-sum-row]').length, 2);
-  ok('ringkasan inventaris memuat no dokumen', doc.getElementById('sum-inventaris').textContent.includes('PB/001'));
 
   console.log('\n--- pindah ke Daftar Permintaan ---');
   doc.querySelector('[data-page="transport"]').click();
@@ -317,22 +309,19 @@ async function run() {
   eq('judul', doc.getElementById('title').textContent, 'Transport Requests');
   eq('jumlah baris tabel', doc.querySelectorAll('#tbody tr').length, 2);
   eq('jumlah header kolom', doc.querySelectorAll('#thead th').length, 11);
-  eq('pilihan divisi terisi', doc.getElementById('filter-dept').options.length, 4);
+  eq('tidak ada dropdown status', doc.getElementById('filter-status'), null);
+  eq('tidak ada dropdown divisi', doc.getElementById('filter-dept'), null);
+  eq('tidak ada tombol ekspor', doc.querySelector('[data-action="export"]'), null);
+  eq('tidak ada tombol permintaan baru', doc.querySelector('[data-action="new"]'), null);
   ok('nomor surat tampil', text().includes('TR/202610/001'));
 
-  console.log('\n--- filter & pencarian ---');
+  console.log('\n--- pencarian ---');
   const q = doc.getElementById('q');
   q.value = 'dewi';
   q.dispatchEvent(new window.Event('input', { bubbles: true }));
   eq('cari "dewi"', doc.querySelectorAll('#tbody tr').length, 1);
   q.value = '';
   q.dispatchEvent(new window.Event('input', { bubbles: true }));
-  const sel = doc.getElementById('filter-status');
-  sel.value = 'Pending';
-  sel.dispatchEvent(new window.Event('change', { bubbles: true }));
-  eq('filter Pending', doc.querySelectorAll('#tbody tr').length, 1);
-  sel.value = '';
-  sel.dispatchEvent(new window.Event('change', { bubbles: true }));
 
   console.log('\n--- drawer edit ---');
   doc.querySelector('#tbody tr').click();
@@ -348,8 +337,6 @@ async function run() {
   doc.getElementById('f-nopol').value = 'kt 9999 zz';
   doc.getElementById('f-noSurat').value = '009/X/FCL/2026';
   doc.getElementById('f-jam').value = '10:30';
-  doc.getElementById('filter-status').value = 'Disetujui';
-  doc.getElementById('filter-dept').value = 'GA';
   doc.querySelector('[data-action="save"]').click();
   await tick();
   ok('updateRequest benar-benar dipanggil', calls.includes('updateRequest'));
@@ -449,10 +436,7 @@ async function run() {
   ok('tanda tangan disetujui masuk ke area cetak', doc.getElementById('p-ttd-approve').textContent.includes('Sari'));
 
   console.log('\n--- email & hapus ---');
-  doc.querySelector('[data-page="overview"]').click();
-  await tick();
-  doc.querySelector('#email-list input[type="checkbox"]').click();
-  doc.querySelector('[data-action="send"]').click();
+  doc.querySelector('#tbody [data-action="email"]').click();
   await tick();
   ok('sendEmail dipanggil', calls.includes('sendEmail'));
   const mailUrl = urls.find((u) => u.includes('action=sendEmail')) || '';

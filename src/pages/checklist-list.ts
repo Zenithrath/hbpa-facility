@@ -43,7 +43,6 @@ interface Page {
   html(): string;
   mount?(): void | Promise<void>;
   onSearchInput?(): void;
-  onFilterChange?(): void;
 }
 
 interface ClistItem {
@@ -92,9 +91,7 @@ function renderList(): void {
   if (!tbody || !cards || !count) return;
 
   const q = (field$('cl-q')?.value ?? '').trim().toLowerCase();
-  const status = (field$('cl-filter-status')?.value ?? '');
   const items = store.checklist.filter((item: ClistItem) => {
-    if (status && item.keterangan !== status) return false;
     if (!q) return true;
     return [item.noDok, item.driver, item.kendaraan, item.keterangan]
       .join(' ')
@@ -183,11 +180,6 @@ const CHECKLIST_LIST_PAGE: Page = {
     <div class="space-y-4">
       <div class="card flex flex-col gap-3 p-4 sm:flex-row">
         ${searchBar({ id: 'cl-q', placeholder: 'Cari no. dokumen, driver, atau kendaraan...', extra: 'flex-1' })}
-        <select id="cl-filter-status" class="field w-auto text-xs font-semibold">
-          <option value="">Semua Status</option>
-          <option value="Baik">Baik</option>
-          <option value="Rusak">Rusak</option>
-        </select>
       </div>
 
       <p id="cl-count" class="text-[11px] text-surface-400"></p>
@@ -224,7 +216,6 @@ const CHECKLIST_LIST_PAGE: Page = {
       .catch((error) => report(error));
   },
   onSearchInput: (): void => renderList(),
-  onFilterChange: (): void => renderList(),
 };
 
 export { CHECKLIST_LIST_PAGE as checklistListPage };
