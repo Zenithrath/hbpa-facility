@@ -1,8 +1,8 @@
 /**
  * main.ts — kerangka aplikasi: shell, router, dan delegasi event.
  *
- * Tidak ada router library dan tidak ada state library. Halaman didaftarkan
- * di PAGES, aksi dikumpulkan di ACTIONS. Satu tempat, mudah dibaca.
+ * Halaman-halaman di-load lazy (dynamic import) agar bundle awal hanya
+ * memuat kerangka + halaman pertama; halaman lain diunduh saat pertama dibuka.
  */
 
 import './styles.css';
