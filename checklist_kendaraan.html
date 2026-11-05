@@ -91,9 +91,9 @@ function gauge(x, y, w, h, title) {
   const Y = v => h - v, n = v => +v.toFixed(2);
   let s = `<line x1="0" y1="${Y(h-14)}" x2="${w}" y2="${Y(h-14)}"/>`;
   s += `<circle cx="${cx}" cy="${Y(cy)}" r="${r}" fill="none"/>`;
-  for (let deg = 0; deg <= 180; deg += 30) {
+  for (const deg of [180, 135, 90, 45, 0]) {
     const a = deg * Math.PI / 180;
-    s += `<line x1="${n(cx+(r-3)*Math.cos(a))}" y1="${n(Y(cy+(r-3)*Math.sin(a)))}" x2="${n(cx+r*Math.cos(a))}" y2="${n(Y(cy+r*Math.sin(a)))}"/>`;
+    s += `<line x1="${n(cx+(r-5)*Math.cos(a))}" y1="${n(Y(cy+(r-5)*Math.sin(a)))}" x2="${n(cx+r*Math.cos(a))}" y2="${n(Y(cy+r*Math.sin(a)))}"/>`;
   }
   s += `<line x1="${n(cx-r+8)}" y1="${Y(cy)}" x2="${n(cx+3)}" y2="${Y(cy)}"/>`;
   s += `<circle cx="${cx}" cy="${Y(cy)}" r="2" fill="#000"/>`;

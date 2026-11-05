@@ -9,6 +9,7 @@
 import { api } from '../api';
 import type { DrHeader } from '../schema';
 import { store } from '../store';
+import { clampPage, slicePage, pagerHtml, bindPager } from '../pagination';
 import {
   $,
   actionBtn,
@@ -58,45 +59,55 @@ function uraianRingkas(item: DrHeader): string {
 
 /* ---------- Daftar ---------- */
 
+let drPage = 1;
+
 function visible(): DrHeader[] {
   const q = (field$('dr-q')?.value ?? '').trim().toLowerCase();
-  return store.dailyReports.filter((item) => {
-    if (!q) return true;
+  return store.dailyReports
+    .filter((item) => {
+      if (!q) return true;
 
-    const isiBaris = item.rows
-      .map((r) => [r.nopol, r.ijn, r.namaUser, r.uraian, r.km, r.solar, r.start, r.finish])
-      .join(' ');
-    return [
-      docLabel(item),
-      item.driver,
-      item.tanggal,
-      item.hari,
-      item.mengetahui,
-      item.createdAt,
-      isiBaris,
-    ]
-      .join(' ')
-      .toLowerCase()
-      .includes(q);
-  });
+      const isiBaris = item.rows
+        .map((r) => [r.nopol, r.ijn, r.namaUser, r.uraian, r.km, r.solar, r.start, r.finish])
+        .join(' ');
+      return [
+        docLabel(item),
+        item.driver,
+        item.tanggal,
+        item.hari,
+        item.mengetahui,
+        item.createdAt,
+        isiBaris,
+      ]
+        .join(' ')
+        .toLowerCase()
+        .includes(q);
+    })
+    .slice()
+    .sort((a, b) => b.rowId - a.rowId);
 }
 
 export function renderList(): void {
-  const rows = visible();
+  const filtered = visible();
+  drPage = clampPage(drPage, filtered.length);
+  const rows = slicePage(filtered, drPage);
   const tbody = $('dr-tbody');
   const cards = $('dr-cards');
   if (!tbody || !cards) return;
 
-  if (!rows.length) {
-    tbody.innerHTML = emptyRow(6, 'Tidak ada Daily Report yang cocok.');
+  if (!filtered.length) {
+    tbody.innerHTML = emptyRow(7, 'Tidak ada Daily Report yang cocok.');
     cards.innerHTML = emptyCard('Tidak ada Daily Report yang cocok.');
-    must('dr-count').textContent = `${rows.length} dari ${store.dailyReports.length} Daily Report`;
+    must('dr-count').textContent = `${filtered.length} dari ${store.dailyReports.length} Daily Report`;
+    const pager = $('dr-pager');
+    if (pager) pager.innerHTML = '';
     return;
   }
 
   tbody.innerHTML = rows
     .map(
-      (item) => `<tr data-action="detail" data-id="${item.rowId}">
+      (item, i) => `<tr data-action="detail" data-id="${item.rowId}">
+      <td class="text-center text-xs text-surface-500">${(drPage - 1) * 10 + i + 1}</td>
       <td class="font-bold whitespace-nowrap">${esc(docLabel(item))}</td>
       <td class="whitespace-nowrap">${esc(orDash(item.hari))}
         <div class="text-[11px] text-surface-400">${esc(orDash(item.tanggal))}</div>
@@ -142,18 +153,28 @@ export function renderList(): void {
     )
     .join('');
 
-  must('dr-count').textContent = `${rows.length} dari ${store.dailyReports.length} Daily Report`;
+  must('dr-count').textContent = `${filtered.length} dari ${store.dailyReports.length} Daily Report`;
+  const pager = $('dr-pager');
+  if (pager) {
+    pager.innerHTML = pagerHtml('dr-pager-inner', drPage, filtered.length);
+    bindPager('dr-pager-inner', () => { drPage--; renderList(); }, () => { drPage++; renderList(); });
+  }
+}
+
+export function resetPage(): void {
+  drPage = 1;
 }
 
 export async function refresh(): Promise<void> {
   const tbody = $('dr-tbody');
   const cards = $('dr-cards');
-  if (tbody) tbody.innerHTML = loadingRow(6);
+  if (tbody) tbody.innerHTML = loadingRow(7);
   if (cards) cards.innerHTML = '';
 
   try {
     store.dailyReports = await api.getDrDocuments();
     PDF_CACHE.clear();
+    drPage = 1;
     renderList();
   } catch (error) {
     console.error(error);

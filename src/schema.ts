@@ -71,6 +71,7 @@ export type EditableTransportKey =
   | 'dept'
   | 'ijn'
   | 'tujuan'
+  | 'tanggal'
   | 'jam'
   | 'nopol'
   | 'keperluan'
@@ -124,6 +125,12 @@ export const TRANSPORT_FIELDS: readonly FieldDef<EditableTransportKey>[] = [
   { key: 'dept', label: 'Divisi', half: true, placeholder: 'Produksi' },
   { key: 'ijn', label: 'IJN', half: true, placeholder: '001234' },
   { key: 'tujuan', label: 'Tujuan', required: true, placeholder: 'Kota tujuan' },
+  {
+    key: 'tanggal',
+    label: 'Tanggal',
+    type: 'date',
+    half: true,
+  },
   {
     key: 'jam',
     label: 'Jam Pemakaian',
@@ -191,7 +198,16 @@ export interface InventarisItem {
 export type InventarisKey = keyof InventarisItem & string;
 
 /** Field inventaris yang bisa diubah lewat drawer pengembalian. */
-export type EditableInventarisKey = 'noDok' | 'status' | 'tglKembaliAktual' | 'catatan';
+export type EditableInventarisKey =
+  | 'noDok'
+  | 'nama'
+  | 'kontak'
+  | 'tglPinjam'
+  | 'tglKembali'
+  | 'keperluan'
+  | 'status'
+  | 'tglKembaliAktual'
+  | 'catatan';
 
 export const KONDISI_OPTIONS = ['Baik', 'Rusak', 'Hilang'] as const;
 
@@ -203,6 +219,11 @@ export const INVENTARIS_FIELDS: readonly FieldDef<EditableInventarisKey>[] = [
     half: true,
     placeholder: '001',
   },
+  { key: 'nama', label: 'Nama Peminjam', half: true, placeholder: 'Nama peminjam' },
+  { key: 'kontak', label: 'Kontak', half: true, placeholder: '0812...' },
+  { key: 'tglPinjam', label: 'Tgl Pinjam', type: 'date', half: true },
+  { key: 'tglKembali', label: 'Rencana Kembali', type: 'date', half: true },
+  { key: 'keperluan', label: 'Keperluan', type: 'textarea' },
   {
     key: 'status',
     label: 'Status',

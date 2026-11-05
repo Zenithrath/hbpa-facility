@@ -308,7 +308,7 @@ async function run() {
   if (logs.length) console.log('   [log]', logs.slice(0, 4).join('\n         '));
   eq('judul', doc.getElementById('title').textContent, 'Transport Requests');
   eq('jumlah baris tabel', doc.querySelectorAll('#tbody tr').length, 2);
-  eq('jumlah header kolom', doc.querySelectorAll('#thead th').length, 11);
+  eq('jumlah header kolom', doc.querySelectorAll('#thead th').length, 12);
   eq('tidak ada dropdown status', doc.getElementById('filter-status'), null);
   eq('tidak ada dropdown divisi', doc.getElementById('filter-dept'), null);
   eq('tidak ada tombol ekspor', doc.querySelector('[data-action="export"]'), null);
@@ -328,7 +328,7 @@ async function run() {
   await tick(60);
   ok('drawer terbuka', doc.getElementById('drawer').classList.contains('open'));
   ok('nomor surat tampil di drawer', doc.getElementById('f-noSurat').value === 'TR/202610/001');
-  eq('jumlah input di drawer', doc.querySelectorAll('#drawer-body input, #drawer-body select, #drawer-body textarea').length, 12);
+  eq('jumlah input di drawer', doc.querySelectorAll('#drawer-body input, #drawer-body select, #drawer-body textarea').length, 13);
   const jam = doc.getElementById('f-jam');
   eq('jam terisi dari HARI/TANGGAL/JAM', jam && jam.value, '08:00');
   const ids = [...doc.querySelectorAll('#drawer-body [id^="f-"]')].map((e) => e.id);
@@ -358,7 +358,7 @@ async function run() {
   doc.querySelector('#inv-tbody tr').click();
   await tick(60);
   const kondisiIds = [...doc.querySelectorAll('#drawer-body select[id^="k-"]')].map((e) => e.id);
-  eq('ID kondisi comeback unik (bug lama)', kondisiIds, ['k-1', 'k-2']);
+  eq('ID kondisi comeback unik (bug lama)', kondisiIds, ['k-1']);
   ok('tidak ada id "undefined"', !doc.getElementById('drawer-body').innerHTML.includes('undefined'));
   doc.getElementById('k-1').value = 'Rusak';
   doc.getElementById('f-noDok').value = 'PB/007';
@@ -540,7 +540,7 @@ async function run() {
     'aksi Manpower urut ke bawah rata kanan',
     !!mrActionCell && mrActionCell.classList.contains('flex-col') && mrActionCell.classList.contains('items-end'),
   );
-  eq('sel aksi Manpower tidak bersarang', doc.querySelectorAll('#mr-tbody tr:first-child > td').length, 6);
+  eq('sel aksi Manpower tidak bersarang', doc.querySelectorAll('#mr-tbody tr:first-child > td').length, 7);
   doc.querySelector('#mr-tbody tr').click();
   await tick(50);
   ok('klik baris Manpower membuka drawer', !doc.getElementById('drawer').classList.contains('hidden'));
@@ -591,7 +591,7 @@ async function run() {
     'aksi Job Completion urut ke bawah rata kanan',
     !!mcActionCell && mcActionCell.classList.contains('flex-col') && mcActionCell.classList.contains('items-end'),
   );
-  eq('sel aksi Job Completion tidak bersarang', doc.querySelectorAll('#mc-tbody tr:first-child > td').length, 6);
+  eq('sel aksi Job Completion tidak bersarang', doc.querySelectorAll('#mc-tbody tr:first-child > td').length, 7);
   doc.querySelector('#mc-tbody tr').click();
   await tick(50);
   ok('klik baris Job Completion membuka drawer', !doc.getElementById('drawer').classList.contains('hidden'));

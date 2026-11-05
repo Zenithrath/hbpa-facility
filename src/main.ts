@@ -119,12 +119,13 @@ const TRANSPORT_PAGE: Page = {
           </table>
         </div>
       </div>
+      <div id="pager" class="mt-2"></div>
     </div>`,
   mount() {
     transport.renderHeader();
     void transport.refresh();
   },
-  onSearchInput: () => transport.renderList(),
+  onSearchInput: () => { transport.resetPage(); transport.renderList(); },
 };
 
 const INVENTARIS_PAGE: Page = {
@@ -147,6 +148,7 @@ const INVENTARIS_PAGE: Page = {
           <table class="table">
             <thead>
               ${tableHead([
+                { label: 'No.', className: 'w-12 text-center' },
                 { label: 'No. Dokumen' },
                 { label: 'Nama' },
                 { label: 'Kontak' },
@@ -163,11 +165,12 @@ const INVENTARIS_PAGE: Page = {
           </table>
         </div>
       </div>
+      <div id="inv-pager" class="mt-2"></div>
     </div>`,
   mount() {
     void inventaris.refresh();
   },
-  onSearchInput: () => inventaris.renderList(),
+  onSearchInput: () => { inventaris.resetPage(); inventaris.renderList(); },
 };
 
 const DAILY_REPORT_PAGE: Page = {
@@ -191,6 +194,7 @@ const DAILY_REPORT_PAGE: Page = {
           <table class="table">
             <thead>
               ${tableHead([
+                { label: 'No.', className: 'w-12 text-center' },
                 { label: 'No. Dokumen' },
                 { label: 'Hari / Tanggal' },
                 { label: 'Driver' },
@@ -203,11 +207,12 @@ const DAILY_REPORT_PAGE: Page = {
           </table>
         </div>
       </div>
+      <div id="dr-pager" class="mt-2"></div>
     </div>`,
   mount() {
     void dailyReport.refresh();
   },
-  onSearchInput: () => dailyReport.renderList(),
+  onSearchInput: () => { dailyReport.resetPage(); dailyReport.renderList(); },
 };
 
 const PAGES = {

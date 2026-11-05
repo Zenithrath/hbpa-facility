@@ -21,6 +21,7 @@ import {
   type Signatures,
   type SignatureSlot,
 } from '../ui';
+import { PAGE_SIZE, clampPage, slicePage, pagerHtml, bindPager } from '../pagination';
 
 export interface ManpowerRow {
   rowId: number;
@@ -75,7 +76,7 @@ function message(error: unknown): string {
 }
 
 export function createManpowerPage<T extends ManpowerRow>(options: ManpowerPageOptions<T>): ManpowerPage {
-  const state = { items: [] as T[], filtered: [] as T[] };
+  const state = { items: [] as T[], filtered: [] as T[], page: 1 };
 
   /** Elemen halaman ini, atau null kalau user sudah pindah halaman. */
   function pageEls(): { tbody: HTMLTableSectionElement; cards: HTMLElement | null; count: HTMLElement } | null {
@@ -92,36 +93,53 @@ export function createManpowerPage<T extends ManpowerRow>(options: ManpowerPageO
     const { tbody, cards, count } = els;
 
     const q = ((document.getElementById(options.searchId) as HTMLInputElement | null)?.value ?? '').trim().toLowerCase();
-    state.filtered = q
+    state.filtered = (q
       ? state.items.filter((item) => JSON.stringify(item).toLowerCase().includes(q))
-      : state.items.slice();
+      : state.items.slice()
+    ).slice().sort((a, b) => b.rowId - a.rowId);
+
+    state.page = clampPage(state.page, state.filtered.length);
+    const pageItems = slicePage(state.filtered, state.page);
 
     count.textContent = `${state.filtered.length} dari ${state.items.length} data`;
-    tbody.innerHTML = state.filtered.length
-      ? state.filtered.map(options.renderRow).join('')
-      : emptyRow(options.columns.length, 'Data tidak ditemukan.');
+    const colCount = options.columns.length + 1;
+    tbody.innerHTML = pageItems.length
+      ? pageItems
+          .map((item, i) => {
+            const no = (state.page - 1) * PAGE_SIZE + i + 1;
+            const row = options.renderRow(item);
+            return row.replace(/^<tr([^>]*)>/, `<tr$1><td class="px-4 py-3 text-sm text-center text-surface-500">${no}</td>`);
+          })
+          .join('')
+      : emptyRow(colCount, 'Data tidak ditemukan.');
     if (cards) {
-      cards.innerHTML = state.filtered.length
-        ? state.filtered.map(options.renderCard).join('')
+      cards.innerHTML = pageItems.length
+        ? pageItems.map(options.renderCard).join('')
         : emptyCard('Data tidak ditemukan.');
+    }
+    const pager = document.getElementById(`${options.tableId}-pager`);
+    if (pager) {
+      pager.innerHTML = pagerHtml(`${options.tableId}-pager-inner`, state.page, state.filtered.length);
+      bindPager(`${options.tableId}-pager-inner`, () => { state.page--; renderRows(); }, () => { state.page++; renderRows(); });
     }
   }
 
   async function refresh(): Promise<void> {
     const start = pageEls();
     if (!start) return;
-    start.tbody.innerHTML = loadingRow(options.columns.length);
+    start.tbody.innerHTML = loadingRow(options.columns.length + 1);
     if (start.cards) start.cards.innerHTML = loadingCard();
 
     try {
       state.items = await options.list();
       options.distribute(state.items);
+      state.page = 1;
       renderRows();
     } catch (error) {
       const text = message(error);
       const els = pageEls();
       if (!els) return;
-      els.tbody.innerHTML = emptyRow(options.columns.length, text);
+      els.tbody.innerHTML = emptyRow(options.columns.length + 1, text);
       if (els.cards) els.cards.innerHTML = emptyCard(text);
       toast(text, 'error');
     }
@@ -209,18 +227,20 @@ export function createManpowerPage<T extends ManpowerRow>(options: ManpowerPageO
 
         <div class="card hidden overflow-hidden md:block">
           <div class="overflow-x-auto">
-            <table class="table min-w-[980px]">
-              <thead>${tableHead(options.columns)}</thead>
+            <table class="table min-w-[760px]">
+              <thead>${tableHead([{ label: 'No.', className: 'w-12 text-center' }, ...options.columns])}</thead>
               <tbody id="${esc(options.tableId)}"></tbody>
             </table>
           </div>
         </div>
+        <div id="${esc(options.tableId)}-pager" class="mt-2"></div>
       </div>`;
     },
     mount() {
       void refresh();
     },
     onSearchInput() {
+      state.page = 1;
       renderRows();
     },
     openDrawer,

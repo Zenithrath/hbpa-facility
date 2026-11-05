@@ -199,6 +199,11 @@ export const api = {
     rowId: number;
     sig: string;
     noDok: string;
+    nama: string;
+    kontak: string;
+    tglPinjam: string;
+    tglKembali: string;
+    keperluan: string;
     status: string;
     tglKembaliAktual: string;
     catatan: string;

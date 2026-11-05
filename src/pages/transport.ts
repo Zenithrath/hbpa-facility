@@ -14,6 +14,7 @@ import {
   type TransportKey,
 } from '../schema';
 import { store } from '../store';
+import { PAGE_SIZE, clampPage, slicePage, pagerHtml, bindPager } from '../pagination';
 import {
   $,
   actionBtn,
@@ -37,6 +38,7 @@ import {
   signatureHtml,
   type Signatures,
   statusBadge,
+  slashToIso,
   toast,
   validateRequired,
 } from '../ui';
@@ -56,34 +58,44 @@ const COL_LABEL: Record<(typeof TRANSPORT_COLUMNS)[number], string> = {
 
 /* ---------- Daftar ---------- */
 
+let transportPage = 1;
+
 function visible(): TransportItem[] {
   const q = (field$('q')?.value ?? '').trim().toLowerCase();
 
-  return store.transport.filter((item) => {
-    if (!q) return true;
-    return [item.noSurat, item.nama, item.dept, item.tujuan, item.nopol, item.keperluan, item.driver]
-      .join(' ')
-      .toLowerCase()
-      .includes(q);
-  });
+  return store.transport
+    .filter((item) => {
+      if (!q) return true;
+      return [item.noSurat, item.nama, item.dept, item.tujuan, item.nopol, item.keperluan, item.driver]
+        .join(' ')
+        .toLowerCase()
+        .includes(q);
+    })
+    .slice()
+    .sort((a, b) => b.rowId - a.rowId);
 }
 
 export function renderList(): void {
-  const rows = visible();
+  const filtered = visible();
+  transportPage = clampPage(transportPage, filtered.length);
+  const rows = slicePage(filtered, transportPage);
   const tbody = $('tbody');
   const cards = $('cards');
   if (!tbody || !cards) return;
 
-  if (!rows.length) {
-    tbody.innerHTML = emptyRow(TRANSPORT_COLUMNS.length + 1, 'Tidak ada permintaan yang cocok.');
+  if (!filtered.length) {
+    tbody.innerHTML = emptyRow(TRANSPORT_COLUMNS.length + 2, 'Tidak ada permintaan yang cocok.');
     cards.innerHTML = emptyCard('Tidak ada permintaan yang cocok.');
-    must('count').textContent = `${rows.length} dari ${store.transport.length} permintaan`;
+    must('count').textContent = `${filtered.length} dari ${store.transport.length} permintaan`;
+    const pager = $('pager');
+    if (pager) pager.innerHTML = '';
     return;
   }
 
   tbody.innerHTML = rows
     .map(
-      (item) => `<tr data-action="detail" data-id="${item.rowId}">
+      (item, i) => `<tr data-action="detail" data-id="${item.rowId}">
+      <td class="text-center text-xs text-surface-500">${(transportPage - 1) * PAGE_SIZE + i + 1}</td>
       ${TRANSPORT_COLUMNS.map((key) => cell(item, key)).join('')}
       ${actionCell(
         actionBtn('detail', { id: item.rowId }),
@@ -127,7 +139,12 @@ export function renderList(): void {
     )
     .join('');
 
-  must('count').textContent = `${rows.length} dari ${store.transport.length} permintaan`;
+  must('count').textContent = `${filtered.length} dari ${store.transport.length} permintaan`;
+  const pager = $('pager');
+  if (pager) {
+    pager.innerHTML = pagerHtml('pager-inner', transportPage, filtered.length);
+    bindPager('pager-inner', () => { transportPage--; renderList(); }, () => { transportPage++; renderList(); });
+  }
 }
 
 function cell(item: TransportItem, key: TransportKey): string {
@@ -147,10 +164,15 @@ function cell(item: TransportItem, key: TransportKey): string {
   return `<td class="${base}${wide}">${esc(orDash(item[key]))}</td>`;
 }
 
+export function resetPage(): void {
+  transportPage = 1;
+}
+
 export function renderHeader(): void {
   const thead = $('thead');
   if (!thead) return;
   thead.innerHTML = tableHead([
+    { label: 'No.', className: 'w-12 text-center' },
     ...TRANSPORT_COLUMNS.map((key) => ({ label: COL_LABEL[key] })),
     { label: 'Aksi', className: 'text-right' },
   ]);
@@ -159,11 +181,12 @@ export function renderHeader(): void {
 export async function refresh(): Promise<void> {
   const tbody = $('tbody');
   const cards = $('cards');
-  if (tbody) tbody.innerHTML = loadingRow(TRANSPORT_COLUMNS.length + 1);
+  if (tbody) tbody.innerHTML = loadingRow(TRANSPORT_COLUMNS.length + 2);
   if (cards) cards.innerHTML = '';
   try {
     const page = await api.listRequests();
     store.transport = page.items;
+    transportPage = 1;
     renderList();
   } catch (error) {
     report(error);
@@ -203,7 +226,13 @@ export function openDrawer(rowId: number): void {
 
 /** Isi awal tiap field drawer. Jam diambil dari teks HARI/TANGGAL/JAM. */
 function isoFor(key: EditableTransportKey, item: TransportItem): string {
-  return key === 'jam' ? jamFor(item.tglJam) : item[key];
+  if (key === 'jam') return jamFor(item.tglJam);
+  if (key === 'tanggal') {
+    const m = /(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(item.tglJam || item.tanggal || '');
+    if (m) return `${m[3]}-${String(m[2]).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`;
+    return slashToIso(item.tanggal) || '';
+  }
+  return item[key];
 }
 
 /** Ambil jam 'HH:MM' dari teks HARI/TANGGAL/JAM kalau ada. */

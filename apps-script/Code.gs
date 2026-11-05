@@ -228,6 +228,22 @@ function composeJam_(stamp, jam) {
   return HARI[d.getDay()] + ', ' + fmt_(d, 'dd/MM/yyyy') + ' ' + jam;
 }
 
+/** Susun teks HARI/TANGGAL/JAM dari string tanggal (ISO atau dd/MM/yyyy) + jam. */
+function composeJamFromDate_(dateStr, jam) {
+  var d = parseDate_(dateStr);
+  if (!d) return '';
+  if (jam) {
+    var jm = /^(\d{1,2}):(\d{2})$/.exec(String(jam));
+    if (jm) d.setHours(Number(jm[1]), Number(jm[2]), 0, 0);
+  }
+  var time = jam || '';
+  if (!time) {
+    var m = /(\d{1,2}):(\d{2})/.exec(String(dateStr));
+    if (m) time = ('0' + m[1]).slice(-2) + ':' + m[2];
+  }
+  return HARI[d.getDay()] + ', ' + fmt_(d, 'dd/MM/yyyy') + (time ? ' ' + time : '');
+}
+
 /* ============================================================================
    PEMETAAN KOLOM BERSAMA
    ============================================================================
@@ -651,6 +667,9 @@ function updateRequest_(body) {
     jam = ('0' + jm[1]).slice(-2) + ':' + jm[2];
   }
 
+  // Tanggal baru (opsional). Jika ada, tglJam disusun ulang dari tanggal + jam.
+  var tanggalBaru = String(body.tanggal || '').trim();
+
   var missing = [];
   var optional = {};
   COLS.transport.fields.forEach(function (f) { if (f.optional) optional[f.key] = 1; });
@@ -661,17 +680,24 @@ function updateRequest_(body) {
 
     var colsMap = cols_('transport');
 
-    if (body.sig) {
-      var current = sh.getRange(rowId, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
-      if (sig_(current, colsMap, 'transport') !== body.sig) {
-        throw new Error('Isi baris ini sudah berubah di spreadsheet. Muat ulang halaman lalu coba lagi.');
-      }
+    var current = sh.getRange(rowId, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
+    if (body.sig && sig_(current, colsMap, 'transport') !== body.sig) {
+      throw new Error('Isi baris ini sudah berubah di spreadsheet. Muat ulang halaman lalu coba lagi.');
     }
 
-    if (jam) {
-      var stampCol = colsMap.fields.timestamp;
-      var stamp = stampCol ? sh.getRange(rowId, stampCol).getDisplayValues()[0][0] : '';
-      var composed = composeJam_(stamp, jam);
+    if (tanggalBaru || jam) {
+      var jamFinal = jam;
+      if (!jamFinal) {
+        var mJam = /(\d{1,2}):(\d{2})/.exec(String(patch.tglJam || val_(current, colsMap, 'tglJam') || ''));
+        if (mJam) jamFinal = ('0' + mJam[1]).slice(-2) + ':' + mJam[2];
+      }
+      var dateStr = tanggalBaru;
+      if (!dateStr) {
+        var stampCol = colsMap.fields.timestamp;
+        var stamp = stampCol ? sh.getRange(rowId, stampCol).getDisplayValues()[0][0] : '';
+        dateStr = stamp || val_(current, colsMap, 'tglJam') || '';
+      }
+      var composed = composeJamFromDate_(dateStr, jamFinal);
       if (composed) patch.tglJam = composed;
     }
 
@@ -838,6 +864,11 @@ function saveInventaris_(body) {
     }
 
     if (body.noDok !== undefined) put('no', String(body.noDok).trim());
+    if (body.nama !== undefined) put('nama', String(body.nama).trim());
+    if (body.kontak !== undefined) put('kontak', String(body.kontak).trim());
+    if (body.tglPinjam !== undefined) put('tglPinjam', String(body.tglPinjam).trim());
+    if (body.tglKembali !== undefined) put('tglKembali', String(body.tglKembali).trim());
+    if (body.keperluan !== undefined) put('keperluan', String(body.keperluan).trim());
     put('status', normalizeInvStatus_(body.status));
     put('tglKembaliAktual', String(body.tglKembaliAktual || '').trim());
     put('catatan', String(body.catatan || '').trim());

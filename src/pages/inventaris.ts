@@ -7,6 +7,7 @@
 
 import { api } from '../api';
 import { INVENTARIS_FIELDS, KONDISI_OPTIONS, type InventarisItem } from '../schema';
+import { clampPage, slicePage, pagerHtml, bindPager } from '../pagination';
 import { store } from '../store';
 import {
   $,
@@ -55,17 +56,22 @@ export function badge(item: InventarisItem): string {
 
 /* ---------- Daftar ---------- */
 
+let invPage = 1;
+
 function visible(): InventarisItem[] {
   const q = (field$('inv-q')?.value ?? '').trim().toLowerCase();
 
-  return store.inventaris.filter((item) => {
-    if (!q) return true;
-    const barang = item.items.map((i) => i.barang).join(' ');
-    return [item.noDok, item.nama, item.kontak, item.keperluan, barang]
-      .join(' ')
-      .toLowerCase()
-      .includes(q);
-  });
+  return store.inventaris
+    .filter((item) => {
+      if (!q) return true;
+      const barang = item.items.map((i) => i.barang).join(' ');
+      return [item.noDok, item.nama, item.kontak, item.keperluan, barang]
+        .join(' ')
+        .toLowerCase()
+        .includes(q);
+    })
+    .slice()
+    .sort((a, b) => b.rowId - a.rowId);
 }
 
 function lines(items: InventarisItem['items']): string {
@@ -90,21 +96,26 @@ function lines(items: InventarisItem['items']): string {
 }
 
 export function renderList(): void {
-  const rows = visible();
+  const filtered = visible();
+  invPage = clampPage(invPage, filtered.length);
+  const rows = slicePage(filtered, invPage);
   const tbody = $('inv-tbody');
   const cards = $('inv-cards');
   if (!tbody || !cards) return;
 
-  if (!rows.length) {
-    tbody.innerHTML = emptyRow(10, 'Tidak ada peminjaman yang cocok.');
+  if (!filtered.length) {
+    tbody.innerHTML = emptyRow(11, 'Tidak ada peminjaman yang cocok.');
     cards.innerHTML = emptyCard('Tidak ada peminjaman yang cocok.');
-    must('inv-count').textContent = `${rows.length} dari ${store.inventaris.length} peminjaman`;
+    must('inv-count').textContent = `${filtered.length} dari ${store.inventaris.length} peminjaman`;
+    const pager = $('inv-pager');
+    if (pager) pager.innerHTML = '';
     return;
   }
 
   tbody.innerHTML = rows
     .map(
-      (item) => `<tr data-action="detail" data-id="${item.rowId}">
+      (item, i) => `<tr data-action="detail" data-id="${item.rowId}">
+      <td class="text-center text-xs text-surface-500">${(invPage - 1) * 10 + i + 1}</td>
       <td class="font-bold whitespace-nowrap">${esc(item.noDok)}</td>
       <td class="font-bold whitespace-nowrap">${esc(orDash(item.nama))}</td>
       <td class="whitespace-nowrap">${esc(orDash(item.kontak))}</td>
@@ -148,16 +159,26 @@ export function renderList(): void {
     )
     .join('');
 
-  must('inv-count').textContent = `${rows.length} dari ${store.inventaris.length} peminjaman`;
+  must('inv-count').textContent = `${filtered.length} dari ${store.inventaris.length} peminjaman`;
+  const pager = $('inv-pager');
+  if (pager) {
+    pager.innerHTML = pagerHtml('inv-pager-inner', invPage, filtered.length);
+    bindPager('inv-pager-inner', () => { invPage--; renderList(); }, () => { invPage++; renderList(); });
+  }
+}
+
+export function resetPage(): void {
+  invPage = 1;
 }
 
 export async function refresh(): Promise<void> {
   const tbody = $('inv-tbody');
   const cards = $('inv-cards');
-  if (tbody) tbody.innerHTML = loadingRow(10);
+  if (tbody) tbody.innerHTML = loadingRow(11);
   if (cards) cards.innerHTML = '';
   try {
     store.inventaris = await api.listInventaris();
+    invPage = 1;
   } catch (error) {
     console.error(error);
     showError(error);
@@ -237,38 +258,30 @@ export function openDrawer(rowId: number): void {
   const item = store.inventaris.find((i) => i.rowId === rowId);
   if (!item) return;
 
-  const fields = INVENTARIS_FIELDS.map((f) =>
-    f.key === 'tglKembaliAktual'
-      ? formField(f, slashToIso(item.tglKembaliAktual) || todayISO())
-      : formField(f, item[f.key], f.key === 'status' ? 'data-action="status"' : ''),
-  );
+  const fields = INVENTARIS_FIELDS.map((f) => {
+    if (f.key === 'tglKembaliAktual') {
+      return formField(f, slashToIso(item.tglKembaliAktual) || todayISO());
+    }
+    if (f.key === 'tglPinjam' || f.key === 'tglKembali') {
+      return formField(f, slashToIso(item[f.key]) || '');
+    }
+    if (f.key === 'status') {
+      return formField(f, item[f.key], 'data-action="status"');
+    }
+    return formField(f, item[f.key]);
+  });
 
   drawer.open({
     title: 'Detail & Pengembalian Barang',
     body: `
-      <div class="grid grid-cols-2 gap-4">
-        ${field('Nama Peminjam', item.nama)}
-        ${field('Kontak', item.kontak)}
-        ${field('Tgl Pinjam', item.tglPinjam)}
-        ${field('Rencana Kembali', item.tglKembali)}
-      </div>
-      ${field('Keperluan', item.keperluan)}
-
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        ${itemRows(item)}
         ${fields.join('')}
-      </div>`,
+      </div>
+      <div class="mt-4">${itemRows(item)}</div>`,
     footer: `
       ${actionBtn('print', { id: rowId, extra: 'px-4 py-2' })}
       ${actionBtn('save', { id: rowId })}`,
   });
-}
-
-function field(label: string, value: string): string {
-  return `<div class="min-w-0">
-    <div class="text-[11px] font-bold tracking-wide text-surface-400 uppercase">${esc(label)}</div>
-    <div class="text-sm font-semibold break-words">${esc(orDash(value))}</div>
-  </div>`;
 }
 
 export function setAllGood(): void {
@@ -301,6 +314,11 @@ export async function save(rowId: number): Promise<void> {
       rowId,
       sig: item.sig,
       noDok: patch.noDok ?? '',
+      nama: patch.nama ?? '',
+      kontak: patch.kontak ?? '',
+      tglPinjam: patch.tglPinjam ? isoToSlash(patch.tglPinjam) : '',
+      tglKembali: patch.tglKembali ? isoToSlash(patch.tglKembali) : '',
+      keperluan: patch.keperluan ?? '',
       status: patch.status || 'Selesai',
       tglKembaliAktual: patch.tglKembaliAktual || isoToSlash(todayISO()),
       catatan: patch.catatan ?? '',

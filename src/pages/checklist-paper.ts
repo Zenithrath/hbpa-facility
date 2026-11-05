@@ -16,6 +16,15 @@ const R = W - 28;
 const B = 28;
 const T = H - 28;
 
+/** Geometri kertas A4, dipakai bersama oleh hasil cetak dan form edit. */
+export const CK_PAGE = { W, H, L, R, B, T };
+/** Tinggi satu baris item dan posisi awal daftar item di kertas. */
+export const CK_ITEM_ROW = 16;
+export const CK_ITEM_COL_TOP = T - 122;
+/** Posisi x dan lebar tiap kolom item. */
+export const CK_ITEM_XS = [36, 169, 301, 432] as const;
+export const CK_ITEM_WS = [128, 128, 128, 130] as const;
+
 export const CK_ITEMS: Record<string, string[]> = {
   Kaca: ['Depan', 'Kiri', 'Kanan', 'Spion Kanan', 'Spion Kiri', 'Spion Dalam'],
   'Body Mobil': ['Depan', 'Grill', 'Fender', 'Pintu Dpn Kanan', 'Pintu Dpn Kiri', 'Pintu Blk Kanan', 'Pintu Blk Kiri', 'Pintu Belakang'],
@@ -27,28 +36,45 @@ export const CK_ITEMS: Record<string, string[]> = {
   Interior: ['Jok', 'Stir', 'Karpet Dasar', 'Persneling', 'Rem Tangan', 'Dashboard', 'Sendalan', 'AC', 'Charger', 'Radio', 'Power Window', 'Gauges'],
 };
 
-const COLUMNS: string[][] = [
+export const CK_COLUMNS: string[][] = [
   ['Kaca', 'Body Mobil'],
   ['Ban', 'Mesin', 'Lampu'],
   ['Eksterior', 'Kelengkapan'],
   ['Interior'],
 ];
 
+/** Posisi gambar kendaraan dan labelnya di kertas A4. */
+export const CK_CAR_DEFS: { label: string; x: number; yTop: number; w: number }[] = [
+  { label: 'ATAS', x: 49, yTop: 368, w: 95 },
+  { label: 'KIRI', x: 165, yTop: 396, w: 180 },
+  { label: 'KANAN', x: 370, yTop: 396, w: 180 },
+  { label: 'DEPAN', x: 191, yTop: 294, w: 128 },
+  { label: 'BELAKANG', x: 396, yTop: 294, w: 128 },
+];
+
+export const CK_VIEW_LABEL_POS: Record<string, { x: number; y: number }> = {
+  ATAS: { x: 96, y: 374 },
+  KIRI: { x: 255, y: 402 },
+  KANAN: { x: 460, y: 402 },
+  DEPAN: { x: 255, y: 298 },
+  BELAKANG: { x: 460, y: 298 },
+};
+
 function pt(v: number): string {
   return `${v}pt`;
 }
 
-function rect(x: number, y: number, w: number, h: number): string {
+export function rect(x: number, y: number, w: number, h: number): string {
   const top = H - (y + h);
   return `<div class="ck-r" style="left:${pt(x)};top:${pt(top)};width:${pt(w)};height:${pt(h)}"></div>`;
 }
 
-function hline(x1: number, x2: number, y: number): string {
+export function hline(x1: number, x2: number, y: number): string {
   const top = H - y - 0.35;
   return `<div class="ck-l" style="left:${pt(x1)};top:${pt(top)};width:${pt(x2 - x1)}"></div>`;
 }
 
-function text(x: number, y: number, s: string, size: number, bold = false, align?: 'center', color?: string): string {
+export function text(x: number, y: number, s: string, size: number, bold = false, align?: 'center', color?: string): string {
   const top = H - y - 0.8465 * size;
   const style =
     `left:${pt(x)};top:${pt(top)};font-size:${pt(size)};` +
@@ -58,19 +84,20 @@ function text(x: number, y: number, s: string, size: number, bold = false, align
   return `<div class="ck-t" style="${style}">${esc(s)}</div>`;
 }
 
-function gauge(x: number, y: number, w: number, h: number, title: string, level?: string): string {
+export function gauge(x: number, y: number, w: number, h: number, title: string, level?: string): string {
   let s = rect(x, y, w, h);
   const cx = w / 2;
   const cy = (h - 14) / 2;
   const r = Math.min(w, h - 14) / 2 - 5;
   const Y = (v: number) => h - v;
   const n = (v: number) => +v.toFixed(2);
-  s += `<svg class="ck-g" viewBox="0 0 ${w} ${h}" stroke="#000" stroke-width="0.7" fill="none" font-family="Helvetica, Arial, sans-serif" style="left:${pt(x)};top:${pt(H - (y + h))};width:${pt(w)};height:${pt(h)}}">`;
+  s += `<svg class="ck-g" data-ce-gauge-svg="${esc(title)}" viewBox="0 0 ${w} ${h}" stroke="#000" stroke-width="0.7" fill="none" font-family="Helvetica, Arial, sans-serif" style="left:${pt(x)};top:${pt(H - (y + h))};width:${pt(w)};height:${pt(h)}">`;
   s += `<line x1="0" y1="${Y(h - 14)}" x2="${w}" y2="${Y(h - 14)}"/>`;
   s += `<circle cx="${cx}" cy="${Y(cy)}" r="${r}" fill="none"/>`;
-  for (let deg = 0; deg <= 180; deg += 30) {
+  // Hanya 5 titik (E, 1/4, 1/2, 3/4, F) agar jarum tepat di level BBM.
+  for (const deg of [180, 135, 90, 45, 0]) {
     const a = (deg * Math.PI) / 180;
-    s += `<line x1="${n(cx + (r - 3) * Math.cos(a))}" y1="${n(Y(cy + (r - 3) * Math.sin(a)))}" x2="${n(cx + r * Math.cos(a))}" y2="${n(Y(cy + r * Math.sin(a)))}"/>`;
+    s += `<line x1="${n(cx + (r - 5) * Math.cos(a))}" y1="${n(Y(cy + (r - 5) * Math.sin(a)))}" x2="${n(cx + r * Math.cos(a))}" y2="${n(Y(cy + r * Math.sin(a)))}"/>`;
   }
   s += `<circle cx="${cx}" cy="${Y(cy)}" r="2" fill="#000"/>`;
   const tx = (px: number, py: number, str: string, sz: number, bold = false, anchor?: string) =>
@@ -79,11 +106,16 @@ function gauge(x: number, y: number, w: number, h: number, title: string, level?
   s += tx(cx - r + 3, cy + 2, 'E', 5) + tx(cx + r - 7, cy + 2, 'F', 5) + tx(cx, cy - 14, 'FUEL METER', 5, false, 'middle');
   const levelMap: Record<string, number> = { E: 180, '1/4': 135, '1/2': 90, '3/4': 45, F: 0 };
   const deg = level ? (levelMap[level.trim().toUpperCase()] ?? null) : null;
+  let nx = cx;
+  let ny = Y(cy);
   if (deg !== null) {
     const a = (deg * Math.PI) / 180;
-    const nx = cx + (r - 4) * Math.cos(a);
-    const ny = cy + (r - 4) * Math.sin(a);
-    s += `<line x1="${cx}" y1="${Y(cy)}" x2="${n(nx)}" y2="${n(Y(ny))}" stroke="#000" stroke-width="1.4"/>`;
+    nx = n(cx + (r - 4) * Math.cos(a));
+    ny = n(Y(cy + (r - 4) * Math.sin(a)));
+  }
+  // Jarum selalu ada supaya form edit bisa memindahkannya tanpa render ulang.
+  s += `<line data-ce-needle x1="${cx}" y1="${Y(cy)}" x2="${nx}" y2="${ny}" stroke="#000" stroke-width="1.4"${deg === null ? ' style="display:none"' : ''}/>`;
+  if (deg !== null) {
     s += `<circle cx="${cx}" cy="${Y(cy)}" r="2.5" fill="#000" stroke="none"/>`;
   }
   s += `</svg>`;
@@ -141,11 +173,11 @@ export function renderChecklistPaper(doc: CkHeader | undefined, item: { rowId: n
   // level BBM ditampilkan via jarum pada gauge, bukan teks terpisah.
 
   // Items
-  const ROW = 16;
-  const colTop = T - 122;
-  const xs = [36, 169, 301, 432];
-  const ws = [128, 128, 128, 130];
-  COLUMNS.forEach((groups, ci) => {
+  const ROW = CK_ITEM_ROW;
+  const colTop = CK_ITEM_COL_TOP;
+  const xs = CK_ITEM_XS;
+  const ws = CK_ITEM_WS;
+  CK_COLUMNS.forEach((groups, ci) => {
     const x = xs[ci] as number;
     const xe = x + (ws[ci] as number);
     let y = colTop;
@@ -170,27 +202,12 @@ export function renderChecklistPaper(doc: CkHeader | undefined, item: { rowId: n
     });
   });
 
-  // Car images
-  const carDefs: { label: string; x: number; yTop: number; w: number }[] = [
-    // Lebar disesuaikan dengan rasio SVG baru supaya kelima tampilan
-    // seimbang; x digeser agar titik tengah tiap gambar tetap di bawah
-    // labelnya (lihat viewLabelPos).
-    { label: 'ATAS', x: 49, yTop: 368, w: 95 },
-    { label: 'KIRI', x: 165, yTop: 396, w: 180 },
-    { label: 'KANAN', x: 370, yTop: 396, w: 180 },
-    { label: 'DEPAN', x: 191, yTop: 294, w: 128 },
-    { label: 'BELAKANG', x: 396, yTop: 294, w: 128 },
-  ];
-  const viewLabelPos: Record<string, { x: number; y: number }> = {
-    ATAS: { x: 96, y: 374 },
-    KIRI: { x: 255, y: 402 },
-    KANAN: { x: 460, y: 402 },
-    DEPAN: { x: 255, y: 298 },
-    BELAKANG: { x: 460, y: 298 },
-  };
-  carDefs.forEach((c) => {
+  // Car images. Lebar disesuaikan dengan rasio SVG baru supaya kelima
+  // tampilan seimbang; x digeser agar titik tengah tiap gambar tetap di
+  // bawah labelnya (lihat CK_VIEW_LABEL_POS).
+  CK_CAR_DEFS.forEach((c) => {
     const lbl = c.label;
-    const pos = viewLabelPos[lbl]!;
+    const pos = CK_VIEW_LABEL_POS[lbl]!;
     html += text(pos.x, pos.y, lbl, 8, true, 'center');
     const marksForView = damages.filter((m) => (m.view || '').toUpperCase() === lbl);
     const wrapTop = H - c.yTop;
