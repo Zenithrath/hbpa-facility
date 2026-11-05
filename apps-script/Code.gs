@@ -1771,8 +1771,10 @@ function saveCk_(body) {
 
   var now = new Date();
   var createdAt = Utilities.formatDate(now, CONFIG.timezone, 'dd/MM/yyyy HH:mm');
-  var email = '';
-  try { email = Session.getActiveUser().getEmail() || ''; } catch (e) {}
+  var email = body.createdBy || '';
+  if (!email) {
+    try { email = Session.getActiveUser().getEmail() || ''; } catch (e) {}
+  }
 
   var lastCol = sh.getLastColumn();
   var out = [];

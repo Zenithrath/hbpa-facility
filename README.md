@@ -65,6 +65,8 @@ checklist.html     input Vite untuk halaman user standalone
 apps-script/
   Code.gs         serahkan ke pemilik Apps Script
   checklist.html  HASIL GENERATE untuk Apps Script; jangan edit manual
+  SetupChecklistForm.gs   pembuat Google Form Checklist Kendaraan
+  README-checklist-form.md panduan form checklist
 apps-script-manpower/
   Code.gs         Backend API MANPOWER terpisah
   Setup.gs        Pembuat Google Form + link ke spreadsheet
@@ -259,9 +261,14 @@ Apps Script terpisah di `?page=checklist`.
    dan foto tanda kerusakan disimpan di folder Drive "HBPA Dokumen DR-CK";
    ID folder di-cache otomatis di Script Property (hapus DRCK_FOLDER_ID bila
    folder dipindah).
-6. Menyimpan/mencetak DR dan CK tidak mengirim email. Email otomatis hanya
+6. (Opsional) Untuk input Checklist lewat Google Form, copy juga
+   `apps-script/SetupChecklistForm.gs` ke project Apps Script yang sama, lalu
+   jalankan `setupChecklistForm()` sekali. Form dibuat otomatis dan setiap
+   kirimannya masuk ke `TAB_CEKKENDARANA` bersama input manual dari aplikasi.
+   Panduan lengkap: `apps-script/README-checklist-form.md`.
+7. Menyimpan/mencetak DR dan CK tidak mengirim email. Email otomatis hanya
    dipakai untuk permintaan transport.
-7. Status dokumen bisa diubah lewat kolom Status di spreadsheet. Nilai
+8. Status dokumen bisa diubah lewat kolom Status di spreadsheet. Nilai
    "Selesai" ditampilkan sebagai badge selesai; nilai lain menjadi Submitted.
 ```
 
@@ -283,7 +290,7 @@ Apps Script terpisah di `?page=checklist`.
 npm test
 ```
 
-Tiga berkas, tanpa framework, tanpa konfigurasi:
+Empat berkas, tanpa framework, tanpa konfigurasi:
 
 - `tests/backend.test.cjs` — menjalankan `Code.gs` di Node dengan spreadsheet
   dan layanan Apps Script di-stub. Memeriksa pemetaan kolom dari judul,
@@ -291,6 +298,9 @@ Tiga berkas, tanpa framework, tanpa konfigurasi:
   email otomatis, validasi payload, dokumen DR/CK (simpan, PDF, koordinat
   kerusakan, baris Google Form tanpa ID, rename tab DR), dan memastikan
   halaman DR/CK sudah tidak lagi berupa file HTML di Apps Script.
+- `tests/checklist-form.test.cjs` — menjalankan `SetupChecklistForm.gs` di Node.
+  Memeriksa pembuatan grid per grup, trigger tunggal, pemetaan jawaban Form
+  ke payload `saveCk_`, konversi tanggal, dan pelewatan kiriman tanpa plat.
 - `tests/manpower.test.cjs` — menjalankan Apps Script MANPOWER di Node.
   Memeriksa whitelist action, pembacaan dua sheet, alias email Google Forms,
   edit dengan guard `sig`, dan memastikan workflow lama (Request ID/status)

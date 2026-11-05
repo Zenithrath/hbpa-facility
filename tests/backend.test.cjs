@@ -88,7 +88,7 @@ const driveFolders = {};
 const htmlFiles = [];
 const ctx = {
   console,
-  SpreadsheetApp: { getActiveSpreadsheet: () => ss, flush() {} },
+  SpreadsheetApp: { getActiveSpreadsheet: () => ss, openById: () => ss, flush() {} },
   Utilities: {
     formatDate(d, tz, p) {
       const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
