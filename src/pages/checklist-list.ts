@@ -11,7 +11,7 @@ import {
   mountChecklistEditor,
   type ChecklistEditorHandle,
 } from './checklist-edit-sheet';
-import { PAGE_SIZE, clampPage, slicePage, pagerHtml, bindPager } from '../pagination';
+import { PAGE_SIZE, clampPage, slicePage, pagerHtml, bindPager, virtualize } from '../pagination';
 import {
   $,
   actionBtn,
@@ -100,6 +100,11 @@ function renderList(): void {
   clPage = clampPage(clPage, filtered.length);
   const items = slicePage(filtered, clPage);
 
+  // Virtualisasi: hanya render baris yang terlihat (+overscan), DOM tetap ringan.
+  const vis = virtualize(items, (clPage - 1) * PAGE_SIZE);
+  const visItems = vis.items;
+  void vis.start;
+
   if (!filtered.length) {
     tbody.innerHTML = emptyRow(7, 'Tidak ada data checklist.');
     cards.innerHTML = emptyCard('Tidak ada data checklist.');
@@ -109,7 +114,7 @@ function renderList(): void {
     return;
   }
 
-  tbody.innerHTML = items
+  tbody.innerHTML = visItems
     .map((item: ClistItem, i: number) => `
       <tr data-action="detail" data-id="${item.rowId}">
         <td class="text-center text-xs text-surface-500">${(clPage - 1) * PAGE_SIZE + i + 1}</td>
@@ -126,7 +131,7 @@ function renderList(): void {
       </tr>
     `).join('');
 
-  cards.innerHTML = items
+  cards.innerHTML = visItems
     .map((item: ClistItem) => `
       <div class="card p-4" data-action="detail" data-id="${item.rowId}">
         <div class="flex items-start justify-between gap-2">
