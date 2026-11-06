@@ -32,11 +32,11 @@ export const VIEW_DIMENSIONS: Record<string, { w: number; h: number }> = {
  * Model kendaraan memakai SVG vektor (satu berkas per sisi, ~420 KB total),
  * jadi tetap tajam saat diperbesar dan hemat dibanding render bitmap lama.
  */
-import ckAtas from "../../public/ck-atas.svg";
-import ckBelakang from "../../public/ck-belakang.svg";
-import ckDepan from "../../public/ck-depan.svg";
-import ckKanan from "../../public/ck-kanan.svg";
-import ckKiri from "../../public/ck-kiri.svg";
+import ckAtas from "../assets/ck-atas.svg";
+import ckBelakang from "../assets/ck-belakang.svg";
+import ckDepan from "../assets/ck-depan.svg";
+import ckKanan from "../assets/ck-kanan.svg";
+import ckKiri from "../assets/ck-kiri.svg";
 
 /** Sumber gambar per tampilan, dipakai kanvas input dan kertas cetak. */
 export const CAR_SVG: Record<string, string> = {
