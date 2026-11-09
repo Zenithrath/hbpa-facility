@@ -119,7 +119,7 @@ function doGet(e) {
 
 var WRITE_ACTIONS = {
   createRequest: 1, updateRequest: 1, updateRequestStatus: 1, deleteRequest: 1, sendEmail: 1,
-  saveInventaris: 1, deleteInventaris: 1,
+  saveInventaris: 1, createInventaris: 1, deleteInventaris: 1,
   saveDr: 1, updateDr: 1, updateDrStatus: 1, deleteDr: 1,
   saveCk: 1, updateCk: 1, updateCkStatus: 1, deleteCk: 1
 };
@@ -179,6 +179,7 @@ function dispatchInner_(action, param) {
     case 'getInventarisData':   return getInventarisData_();
     case 'getMasters':          return getMasters_();
     case 'saveInventaris':      return saveInventaris_(parseBody_(param));
+    case 'createInventaris':    return createInventaris_(parseBody_(param));
     case 'deleteInventaris':   return deleteSheetRow_('inventaris', param.rowId || param.id);
 
     // Fitur Daily Report / Checklist Kendaraan.
@@ -977,6 +978,89 @@ function saveInventaris_(body) {
   });
 
   return ok_({ message: 'Tersimpan.' });
+}
+
+/** Buat baris peminjaman baru (Add Data). Normal: append satu baris. */
+function createInventaris_(body) {
+  body = body || {};
+  if (!body.nama || !String(body.nama).trim()) return fail_('Nama peminjam wajib diisi.');
+  if (JSON.stringify(body).length > MAX_WRITE_BYTES) {
+    return fail_('Data terlalu panjang untuk dikirim lewat URL.');
+  }
+
+  var result = { rowId: 0 };
+  withLock_(function () {
+    var sh = sheet_('inventaris');
+    var colsMap = cols_('inventaris');
+
+    // Pastikan grup barang untuk tiap lines[].n punya header kolom.
+    var lines = body.lines || [];
+    lines.forEach(function (line) {
+      var n = String(line.n || '1');
+      if (!colsMap.groups[n]) {
+        var g = {};
+        var headers = { barang: 'BARANG' + n, qty: 'QTY' + n, kondisiAmbil: 'KONDISI AMBIL' + n, kondisiKembali: 'KONDISI KEMBALI' + n };
+        ['barang', 'qty', 'kondisiAmbil', 'kondisiKembali'].forEach(function (k) {
+          var newCol = sh.getLastColumn() + 1;
+          sh.getRange(1, newCol).setValue(headers[k]);
+          g[k] = newCol;
+        });
+        colsMap.groups[n] = g;
+      } else {
+        var grp = colsMap.groups[n];
+        var miss = { barang: 'BARANG' + n, qty: 'QTY' + n, kondisiAmbil: 'KONDISI AMBIL' + n, kondisiKembali: 'KONDISI KEMBALI' + n };
+        ['barang', 'qty', 'kondisiAmbil', 'kondisiKembali'].forEach(function (k) {
+          if (!grp[k]) {
+            var newCol = sh.getLastColumn() + 1;
+            sh.getRange(1, newCol).setValue(miss[k]);
+            grp[k] = newCol;
+          }
+        });
+      }
+    });
+
+    var lastCol = sh.getLastColumn();
+    var out = [];
+    for (var c = 0; c < lastCol; c++) out.push('');
+
+    function put(fieldKey, value) {
+      if (value === undefined || value === null) return;
+      var col = colsMap.fields[fieldKey];
+      if (col) { out[col - 1] = value; return; }
+      var spec = COLS.inventaris.fields.filter(function (f) { return f.key === fieldKey; })[0];
+      if (spec && spec.create) {
+        var newCol = sh.getLastColumn() + 1;
+        sh.getRange(1, newCol).setValue(spec.create);
+        out.push(value);
+        colsMap.fields[fieldKey] = newCol;
+      }
+    }
+
+    put('no', String(body.noDok || '').trim());
+    put('nama', String(body.nama || '').trim());
+    put('kontak', String(body.kontak || '').trim());
+    put('tglPinjam', String(body.tglPinjam || '').trim());
+    put('tglKembali', String(body.tglKembali || '').trim());
+    put('keperluan', String(body.keperluan || '').trim());
+    put('status', normalizeInvStatus_(body.status));
+    put('tglKembaliAktual', String(body.tglKembaliAktual || '').trim());
+    put('catatan', String(body.catatan || '').trim());
+
+    lines.forEach(function (line) {
+      var grp = colsMap.groups[String(line.n)];
+      if (!grp) return;
+      if (grp.barang) out[grp.barang - 1] = String(line.barang || '').trim();
+      if (grp.qty) out[grp.qty - 1] = String(line.qty || '1').trim();
+      if (grp.kondisiAmbil) out[grp.kondisiAmbil - 1] = String(line.kondisiAmbil || 'Baik').trim();
+      if (grp.kondisiKembali) out[grp.kondisiKembali - 1] = String(line.kondisiKembali || '-').trim();
+    });
+
+    sh.appendRow(out);
+    result.rowId = sh.getLastRow();
+    colCache_ = {};
+  });
+
+  return ok_({ message: 'Peminjaman tersimpan.', rowId: result.rowId });
 }
 
 
@@ -1829,8 +1913,140 @@ function getCkData_() {
 
 
 function saveDr_(body) {
-  // Implementasi sederhana
-  return ok_({ success: true, data: { message: 'Surat Tugas tersimpan.' } });
+  body = body || {};
+  if (!body.driver || !String(body.driver).trim()) return fail_('Driver wajib diisi.');
+  var tanggal = String(body.tanggal || '').trim();
+  var tglDate = tanggal ? parseDate_(tanggal) : null;
+  if (!tglDate || isNaN(tglDate.getTime())) return fail_('Tanggal tidak valid, pakai dd/MM/yyyy.');
+  if (JSON.stringify(body).length > CONFIG.MAX_DOC_BYTES) {
+    return fail_('Data terlalu besar untuk dikirim lewat URL.');
+  }
+
+  function hasContent(r) {
+    return !!(r.start || r.finish || r.nopol || r.ijn || r.namaUser || r.uraian || r.km || r.solar);
+  }
+  function timeMin(v) {
+    var m = /^(\d{1,2}):(\d{2})$/.exec(String(v || '').trim());
+    if (!m) return -1;
+    return Number(m[1]) * 60 + Number(m[2]);
+  }
+
+  var rowsIn = body.rows || [];
+  var rows = rowsIn.filter(hasContent);
+  if (!rowsIn.length || !rows.length) return fail_('Isi minimal satu baris pekerjaan.');
+  for (var vr = 0; vr < rows.length; vr++) {
+    var rr = rows[vr];
+    var hasStart = String(rr.start || '').trim();
+    var hasFinish = String(rr.finish || '').trim();
+    if ((hasStart && timeMin(hasStart) < 0) || (hasFinish && timeMin(hasFinish) < 0)) {
+      return fail_('Jam start/finish harus format HH:MM.');
+    }
+    if (hasStart && hasFinish && timeMin(hasFinish) < timeMin(hasStart)) {
+      return fail_('Jam finish tidak boleh sebelum jam start.');
+    }
+    if (rr.km !== undefined && rr.km !== null && String(rr.km).trim() !== '' && isNaN(Number(String(rr.km).trim()))) {
+      return fail_('KM harus berupa angka.');
+    }
+  }
+
+  var result = { rowId: 0, id: '', hari: '' };
+  withLock_(function () {
+    var sh = sheet_('dr');
+    var colsMap = cols_('dr');
+
+    // Header blok pekerjaan (pastikan kolom grup cukup untuk rows).
+    var blockHeaders = ['Jam Start', 'Jam Finish', 'No. Plat', 'IJN', 'Nama User', 'KM', 'SOLAR', 'Uraian'];
+    var blockKeys = ['start', 'finish', 'nopol', 'ijn', 'namaUser', 'km', 'solar', 'uraian'];
+    var groups = colsMap.groups;
+    var groupCount = Object.keys(groups).length;
+    var needed = Math.max(groupCount, rows.length, 1);
+    for (var g = groupCount + 1; g <= needed; g++) {
+      var newGroup = {};
+      for (var h = 0; h < blockHeaders.length; h++) {
+        var newColDr = sh.getLastColumn() + 1;
+        sh.getRange(1, newColDr).setValue(blockHeaders[h]);
+        newGroup[blockKeys[h]] = newColDr;
+      }
+      groups[String(g)] = newGroup;
+    }
+    colsMap.groups = groups;
+
+    var id = String(body.id || '').trim();
+    if (!id) {
+      var day = Utilities.formatDate(tglDate, CONFIG.timezone, 'yyyyMMdd');
+      var prefix = 'DR-' + day + '-';
+      var maxN = 0;
+      var idCol = colsMap.fields.id || colsMap.fields.nodokumen;
+      if (idCol) {
+        for (var sr = 2; sr <= sh.getLastRow(); sr++) {
+          var existing = String(sh.getRange(sr, idCol).getDisplayValues()[0][0] || '');
+          if (existing.indexOf(prefix) === 0) {
+            var n = parseInt(existing.slice(prefix.length), 10);
+            if (!isNaN(n) && n > maxN) maxN = n;
+          }
+        }
+      }
+      id = prefix + ('00' + (maxN + 1)).slice(-3).slice(-3);
+      if (maxN + 1 > 999) id = prefix + (maxN + 1);
+    }
+    var hari = String(body.hari || '').trim();
+    if (!hari && tglDate) hari = HARI[tglDate.getDay()];
+    result.hari = hari;
+
+    var lastCol = sh.getLastColumn();
+    var out = [];
+    for (var c = 0; c < lastCol; c++) out.push('');
+
+    function putF(k, v) {
+      var col = colsMap.fields[k];
+      if (col) out[col - 1] = v;
+    }
+
+    putF('id', id);
+    putF('nodokumen', id);
+    putF('hari', hari);
+    putF('tanggal', tanggal);
+    putF('driver', String(body.driver || '').trim());
+    putF('mengetahui', String(body.mengetahui || '').trim());
+    putF('status', 'Submitted');
+    if (colsMap.fields.timestamp) out[colsMap.fields.timestamp - 1] = new Date();
+
+    for (var i = 0; i < rows.length; i++) {
+      var rd = rows[i] || {};
+      var grp = groups[String(i + 1)];
+      if (!grp) continue;
+      var startRaw = String(rd.start || '').trim();
+      var finishRaw = String(rd.finish || '').trim();
+      if (grp.start) out[grp.start - 1] = startRaw ? normTime_(startRaw) : '';
+      if (grp.finish) out[grp.finish - 1] = finishRaw ? normTime_(finishRaw) : '';
+      if (grp.nopol) out[grp.nopol - 1] = String(rd.nopol || '').trim();
+      if (grp.ijn) out[grp.ijn - 1] = String(rd.ijn || '').trim();
+      if (grp.namaUser) out[grp.namaUser - 1] = String(rd.namaUser || '').trim();
+      if (grp.km) out[grp.km - 1] = String(rd.km || '').trim();
+      if (grp.solar) out[grp.solar - 1] = String(rd.solar || '').trim();
+      if (grp.uraian) out[grp.uraian - 1] = String(rd.uraian || '').trim();
+    }
+
+    sh.appendRow(out);
+    result.rowId = sh.getLastRow();
+    result.id = id;
+    colCache_ = {};
+  });
+
+  return ok_({
+    item: {
+      rowId: result.rowId,
+      id: result.id,
+      hari: result.hari,
+      tanggal: tanggal,
+      driver: String(body.driver || '').trim(),
+      mengetahui: String(body.mengetahui || '').trim(),
+      status: 'Submitted',
+      linkPdf: '',
+      rows: rows,
+    },
+    message: 'Surat Tugas tersimpan. PDF siap dicetak.',
+  });
 }
 
 function saveCk_(body) {
@@ -2322,4 +2538,3 @@ function ckPdfForRow_(rowId) {
   // Placeholder: checklist PDF generated on demand not implemented; return fail.
   return fail_('Cetak PDF Checklist belum tersedia.');
 }
-

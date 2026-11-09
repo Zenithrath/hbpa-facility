@@ -31,6 +31,8 @@ import {
   searchBar,
   setBusy,
   tableHead,
+  isoToSlash,
+  todayISO,
   type Signatures,
   toast,
 } from '../ui';
@@ -66,6 +68,10 @@ let syncEditorToLive: (() => void) | null = null;
 let saveEditHandler: (() => Promise<void>) | null = null;
 
 export async function saveEdit(): Promise<void> {
+  await saveEditHandler?.();
+}
+
+export async function saveNew(): Promise<void> {
   await saveEditHandler?.();
 }
 
@@ -195,6 +201,7 @@ const CHECKLIST_LIST_PAGE: Page = {
     <div class="space-y-4">
       <div class="card flex flex-col gap-3 p-4 sm:flex-row">
         ${searchBar({ id: 'cl-q', placeholder: 'Cari no. dokumen, driver, atau kendaraan...', extra: 'flex-1' })}
+        ${actionBtn('add', { extra: 'shrink-0 justify-center' })}
       </div>
 
       <p id="cl-count" class="text-[11px] text-surface-400"></p>
@@ -351,6 +358,95 @@ export async function openDetail(rowId: number): Promise<void> {
       editDirty = false;
       updateDirty();
       syncEditorToLive?.();
+    } catch (e) {
+      report(e);
+    } finally {
+      setBusy(saveBtn, false);
+    }
+  };
+}
+
+/** Drawer form baru: isian sama persis dengan drawer Detail (editor A4). */
+export async function openAdd(): Promise<void> {
+  const docs = await ensureCkDocs().catch(() => ckDocs);
+  void docs;
+
+  editDirty = false;
+  activeEditRowId = null;
+  activeEditDoc = null;
+
+  const bodyEl = must('drawer-body');
+  const prevOverflow = bodyEl.style.overflow;
+  const originalClose = drawer.close;
+  drawer.close = () => {
+    editorHandle?.destroy();
+    editorHandle = null;
+    syncEditorToLive = null;
+    activeEditRowId = null;
+    activeEditDoc = null;
+    editDirty = false;
+    saveEditHandler = null;
+    bodyEl.style.overflow = prevOverflow;
+    originalClose();
+    drawer.close = originalClose;
+  };
+
+  const today = isoToSlash(todayISO());
+  const blankItem = { rowId: 0, noDok: '', tanggal: today, driver: '', kendaraan: '', keterangan: '' } as ClistItem;
+
+  drawer.open({
+    title: 'Tambah Checklist Kendaraan — Baru',
+    size: 'xl',
+    body: `<div id="ck-edit">${checklistEditorHtml(undefined, blankItem)}</div>`,
+    footer: `
+      <button class="btn-slate px-4 py-2" type="button" data-action="close-drawer">Batal</button>
+      ${actionBtn('save-new', { extra: 'px-4 py-2', attrs: 'id="ck-save-new"' })}
+    `,
+  });
+
+  bodyEl.style.overflow = 'auto';
+  const saveBtn = $<HTMLButtonElement>('ck-save-new');
+
+  const updateDirty = (): void => {
+    const el = document.getElementById('ce-dirty');
+    el?.classList.toggle('hidden', !editDirty);
+  };
+  const handleEditorChange = (): void => {
+    editDirty = true;
+    updateDirty();
+  };
+
+  editorHandle = mountChecklistEditor(undefined, blankItem, handleEditorChange);
+  editorHandle?.refit();
+  syncEditorToLive = () => undefined;
+
+  saveEditHandler = async () => {
+    if (!saveBtn || saveBtn.disabled || !editorHandle) return;
+    setBusy(saveBtn, true);
+    try {
+      const body = editorHandle.collect();
+      if (!body.tanggal.trim()) body.tanggal = today;
+      if (!body.driver.trim()) {
+        toast('Driver wajib diisi.', 'error');
+        return;
+      }
+      await api.saveCk({
+        tanggal: body.tanggal,
+        counter: body.counter,
+        kendaraan: body.kendaraan,
+        tipeMobil: body.tipeMobil,
+        driver: body.driver,
+        kilometer: body.kilometer,
+        bbmMasuk: body.bbmMasuk,
+        bbmKeluar: body.bbmKeluar,
+        keterangan: body.keterangan,
+        diperiksaOleh: body.diperiksaOleh,
+        items: body.items,
+        damages: body.damages,
+      });
+      toast('Checklist tersimpan.');
+      drawer.close();
+      await refresh();
     } catch (e) {
       report(e);
     } finally {

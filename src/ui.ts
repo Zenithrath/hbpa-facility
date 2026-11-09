@@ -96,7 +96,9 @@ export type ActionVerb =
   | 'delete'
   | 'email'
   | 'new'
+  | 'add'
   | 'create'
+  | 'save-new'
   | 'export'
   | 'refresh'
   | 'all-good'
@@ -121,7 +123,9 @@ const VERB_STYLE: Record<ActionVerb, VerbStyle> = {
   delete: { label: 'Hapus', cls: 'btn-danger' },
   email: { label: 'Email', cls: 'btn-slate', icon: 'mail' },
   new: { label: 'Permintaan Baru', cls: 'btn-primary', icon: 'plus' },
+  add: { label: 'Add Data', cls: 'btn-primary', icon: 'plus' },
   create: { label: 'Simpan Permintaan', cls: 'btn-primary' },
+  'save-new': { label: 'Simpan Baru', cls: 'btn-primary' },
   export: { label: 'Ekspor CSV', cls: 'btn-slate', icon: 'file' },
   refresh: { label: 'Refresh Data', cls: 'btn-slate', icon: 'refresh' },
   'all-good': { label: 'Tandai Semua Baik', cls: 'btn-slate' },

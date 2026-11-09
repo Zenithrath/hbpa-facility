@@ -40,6 +40,7 @@ import {
   statusBadge,
   slashToIso,
   toast,
+  todayISO,
   validateRequired,
 } from '../ui';
 
@@ -259,6 +260,64 @@ export async function save(rowId: number): Promise<void> {
   toast(MSG.saving);
   try {
     await api.updateRequest({ rowId, sig: item.sig, ...patch });
+    toast(MSG.saved);
+    await refresh();
+  } catch (error) {
+    report(error);
+  }
+}
+
+/* ---------- Tambah (create) ---------- */
+
+/** Drawer form baru: isian sama persis dengan drawer Detail. */
+export function openAddDrawer(): void {
+  const missingStatus = store.missingFields.includes('status');
+
+  drawer.open({
+    title: 'Tambah Permintaan Transportasi — Baru',
+    body: `
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        ${TRANSPORT_FIELDS.map((f) =>
+          formField(f, f.key === 'tanggal' ? todayISO() : f.key === 'status' ? 'Pending' : ''),
+        ).join('')}
+      </div>
+      ${
+        missingStatus
+          ? `<p class="text-[11px] text-amber-700">Spreadsheet belum punya kolom STATUS, status tidak akan tersimpan.</p>`
+          : ''
+      }`,
+    footer: `
+      <button class="btn-slate px-4 py-2" type="button" data-action="close-drawer">Batal</button>
+      ${actionBtn('save-new')}`,
+  });
+}
+
+export async function saveCreate(): Promise<void> {
+  if (!validateRequired([
+    { id: 'f-nama', label: 'Nama' },
+    { id: 'f-tujuan', label: 'Tujuan' },
+  ])) return;
+
+  const patch = readForm<Record<string, string>>(TRANSPORT_FIELDS);
+  const body: Record<string, string> = { idemKey: `${Date.now()}-${Math.random()}` };
+  for (const [key, value] of Object.entries(patch)) body[key] = value;
+  // createRequest_ membaca tglJam; susun dari tanggal + jam seperti update.
+  const jam = body.jam ? String(body.jam) : '';
+  delete body.jam;
+  if (body.tanggal) {
+    const d = new Date(`${body.tanggal}T00:00:00`);
+    if (!isNaN(d.getTime())) {
+      const hari = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'][d.getDay()];
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      body.tglJam = `${hari}, ${dd}/${mm}/${d.getFullYear()}${jam ? ' ' + jam : ''}`;
+    }
+  }
+
+  drawer.close();
+  toast(MSG.saving);
+  try {
+    await api.createRequest(body);
     toast(MSG.saved);
     await refresh();
   } catch (error) {

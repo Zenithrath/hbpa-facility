@@ -7,6 +7,7 @@
  */
 
 import {
+  actionBtn,
   askSignature,
   drawer,
   emptyCard,
@@ -41,6 +42,8 @@ export interface ManpowerPageOptions<T extends ManpowerRow> {
   list: () => Promise<T[]>;
   get: (rowId: number) => Promise<T>;
   save: (rowId: number, sig: string, patch: Record<string, string>) => Promise<T>;
+  create?: (patch: Record<string, string>) => Promise<T>;
+  blankItem: () => T;
   remove: (rowId: number, sig: string) => Promise<{ deleted: boolean }>;
   renderRow: (item: T) => string;
   renderCard: (item: T) => string;
@@ -64,7 +67,9 @@ export interface ManpowerPage {
   mount(): void;
   onSearchInput(): void;
   openDrawer(rowId: number): void;
+  openAdd(): void;
   save(rowId: number): Promise<void>;
+  saveNew(): Promise<void>;
   remove(rowId: number): Promise<void>;
   print(rowId: number, signatures: Signatures): void;
   printRequest(rowId: number): void;
@@ -160,6 +165,21 @@ export function createManpowerPage<T extends ManpowerRow>(options: ManpowerPageO
     options.afterOpen?.(item);
   }
 
+  function openAdd(): void {
+    const blank = options.blankItem();
+    drawer.open({
+      title: options.drawerTitle(blank).replace(/— .*$/, '— Baru'),
+      body: options.drawerBody(blank),
+      footer: `
+        <button class="btn-slate px-4 py-2" type="button" data-action="close-drawer">Batal</button>
+        <div class="flex flex-wrap gap-2">
+          ${actionBtn('save-new')}
+        </div>`,
+      size: options.drawerSize ?? 'md',
+    });
+    options.afterOpen?.(blank);
+  }
+
   async function save(rowId: number): Promise<void> {
     const item = state.items.find((row) => row.rowId === rowId);
     if (!item) {
@@ -169,6 +189,22 @@ export function createManpowerPage<T extends ManpowerRow>(options: ManpowerPageO
     try {
       toast(MSG.saving);
       await options.save(item.rowId, item.sig, options.patchFromDrawer());
+      toast(MSG.saved);
+      drawer.close();
+      await refresh();
+    } catch (error) {
+      toast(message(error), 'error');
+    }
+  }
+
+  async function saveNew(): Promise<void> {
+    if (!options.create) {
+      toast('Create belum tersedia untuk halaman ini.', 'error');
+      return;
+    }
+    try {
+      toast(MSG.saving);
+      await options.create(options.patchFromDrawer());
       toast(MSG.saved);
       drawer.close();
       await refresh();
@@ -219,6 +255,7 @@ export function createManpowerPage<T extends ManpowerRow>(options: ManpowerPageO
       return `<div class="space-y-4">
         <div class="card flex flex-col gap-3 p-4 sm:flex-row">
           ${searchBar({ id: options.searchId, placeholder: options.searchPlaceholder, extra: 'flex-1' })}
+          ${actionBtn('add', { extra: 'shrink-0 justify-center' })}
         </div>
 
         <p class="text-[11px] text-surface-400"><span id="${esc(options.countId)}">0 data</span> · ${esc(options.description)}</p>
@@ -244,7 +281,9 @@ export function createManpowerPage<T extends ManpowerRow>(options: ManpowerPageO
       renderRows();
     },
     openDrawer,
+    openAdd,
     save,
+    saveNew,
     remove,
     print: printItem,
     printRequest,

@@ -335,6 +335,98 @@ export async function save(rowId: number): Promise<void> {
   }
 }
 
+/* ---------- Tambah (create) ---------- */
+
+function newItemRow(n: number): string {
+  return `<div class="flex items-end gap-2 border-b border-surface-100 py-2" data-inv-line>
+    <div class="min-w-0 flex-1">
+      <label class="mb-1 block text-[10px] font-bold tracking-wide text-surface-500 uppercase">Barang ${n}</label>
+      <input class="field py-1.5 text-xs" data-inv-barang placeholder="Nama barang">
+    </div>
+    <div class="w-20">
+      <label class="mb-1 block text-[10px] font-bold tracking-wide text-surface-500 uppercase">Qty</label>
+      <input class="field py-1.5 text-xs" data-inv-qty value="1" inputmode="numeric">
+    </div>
+    <div class="w-32">
+      <label class="mb-1 block text-[10px] font-bold tracking-wide text-surface-500 uppercase">Kondisi Ambil</label>
+      <select class="field py-1.5 text-xs" data-inv-ambil>${kondisiOptions('Baik')}</select>
+    </div>
+  </div>`;
+}
+
+/** Tambah satu baris barang di drawer Add Data inventaris. */
+export function addInventarisItemRow(): void {
+  const box = $('inv-lines');
+  if (!box) return;
+  const n = box.querySelectorAll('[data-inv-line]').length + 1;
+  box.insertAdjacentHTML('beforeend', newItemRow(n));
+}
+
+/** Drawer form baru: isian sama persis dengan drawer Detail + baris barang. */
+export function openAddDrawer(): void {
+  const fields = INVENTARIS_FIELDS.map((f) => {
+    if (f.key === 'tglPinjam') return formField(f, todayISO());
+    if (f.key === 'status') return formField(f, 'Dipinjam', 'data-action="status"');
+    return formField(f, '');
+  });
+
+  drawer.open({
+    title: 'Tambah Peminjaman Barang — Baru',
+    body: `
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        ${fields.join('')}
+      </div>
+      <div class="border-t border-surface-100 pt-4">
+        <div class="mb-2 flex items-center justify-between gap-2">
+          <h4 class="text-xs font-bold tracking-wide text-surface-700 uppercase">Barang yang Dipinjam</h4>
+          ${actionBtn('add-row')}
+        </div>
+        <div id="inv-lines">${newItemRow(1)}</div>
+      </div>`,
+    footer: `
+      <button class="btn-slate px-4 py-2" type="button" data-action="close-drawer">Batal</button>
+      ${actionBtn('save-new')}`,
+  });
+}
+
+export async function saveCreate(): Promise<void> {
+  const patch = readForm<Record<string, string>>(INVENTARIS_FIELDS);
+  const lines: { n: string; barang: string; qty: string; kondisiAmbil: string; kondisiKembali: string }[] = [];
+  document.querySelectorAll<HTMLElement>('[data-inv-line]').forEach((row, idx) => {
+    const barang = (row.querySelector('[data-inv-barang]') as HTMLInputElement | null)?.value.trim() ?? '';
+    if (!barang) return;
+    const qty = (row.querySelector('[data-inv-qty]') as HTMLInputElement | null)?.value.trim() || '1';
+    const kondisiAmbil = (row.querySelector('[data-inv-ambil]') as HTMLSelectElement | null)?.value || 'Baik';
+    lines.push({ n: String(idx + 1), barang, qty, kondisiAmbil, kondisiKembali: '-' });
+  });
+  if (!lines.length) {
+    toast('Isi minimal satu barang.', 'error');
+    return;
+  }
+
+  drawer.close();
+  toast(MSG.saving);
+  try {
+    await api.createInventaris({
+      noDok: patch.noDok ?? '',
+      nama: patch.nama ?? '',
+      kontak: patch.kontak ?? '',
+      tglPinjam: patch.tglPinjam ? isoToSlash(patch.tglPinjam) : '',
+      tglKembali: patch.tglKembali ? isoToSlash(patch.tglKembali) : '',
+      keperluan: patch.keperluan ?? '',
+      status: patch.status || 'Dipinjam',
+      tglKembaliAktual: patch.tglKembaliAktual ? isoToSlash(patch.tglKembaliAktual) : '',
+      catatan: patch.catatan ?? '',
+      lines,
+    });
+    toast(MSG.saved);
+    clearError();
+    await refresh();
+  } catch (error) {
+    report(error);
+  }
+}
+
 /* ---------- Cetak ---------- */
 
 export function printRow(rowId: number, sigs?: Signatures): void {

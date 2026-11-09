@@ -85,6 +85,19 @@ export const manpowerRequisitionPage = createManpowerPage<ManpowerRequest>({
   list: () => manpowerApi.listRequests({ pageSize: 100 }).then((r) => r.items),
   get: (rowId) => manpowerApi.getRequest(rowId),
   save: (rowId, sig, patch) => manpowerApi.saveRequest(rowId, sig, patch),
+  create: (patch) => manpowerApi.createRequest(patch),
+  blankItem: () => ({
+    rowId: 0,
+    sig: '',
+    timestamp: '',
+    requesterEmail: '',
+    requesterName: '',
+    department: '',
+    division: '',
+    requestedDate: '',
+    requiredManpower: '',
+    jobOutline: '',
+  }),
   remove: (rowId, sig) => manpowerApi.deleteRequest(rowId, sig),
   distribute: (items) => {
     state.items = items;

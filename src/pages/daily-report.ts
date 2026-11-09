@@ -32,6 +32,7 @@ import {
   type Signatures,
   toast,
   validateRequired,
+  todayISO,
 } from '../ui';
 
 /** PDF yang sudah dibuat selama halaman terbuka, supaya klik kedua instan. */
@@ -350,6 +351,77 @@ export function addDrRow(): void {
       <div class="col-span-2"><label class="text-[10px] font-bold text-surface-400 uppercase">Uraian</label><input id="dr-r${i}-uraian" class="field" value=""></div>
     </div>`;
   container.appendChild(block);
+}
+
+/* ---------- Tambah (create) ---------- */
+
+/** Drawer form baru: isian sama persis dengan drawer Detail. */
+export function openAddDrawer(): void {
+  drawer.open({
+    title: 'Tambah Daily Report — Baru',
+    body: `
+      <div class="grid grid-cols-2 gap-3">
+        <div class="col-span-2">
+          <label class="text-[11px] font-bold tracking-wide text-surface-400 uppercase">No. Dokumen / ID_DR</label>
+          <input type="text" id="f-id" class="field font-mono font-bold uppercase" value="" />
+        </div>
+
+        <div>
+          <label class="text-[11px] font-bold tracking-wide text-surface-400 uppercase">Hari</label>
+          <input type="text" id="f-hari" class="field" value="" />
+        </div>
+        <div>
+          <label class="text-[11px] font-bold tracking-wide text-surface-400 uppercase">Tanggal</label>
+          <input type="text" id="f-tanggal" class="field" value="" placeholder="dd/MM/yyyy" />
+        </div>
+        <div>
+          <label class="text-[11px] font-bold tracking-wide text-surface-400 uppercase">Driver</label>
+          <input type="text" id="f-driver" class="field" value="" />
+        </div>
+        <div class="col-span-2">
+          <label class="text-[11px] font-bold tracking-wide text-surface-400 uppercase">Mengetahui</label>
+          <input type="text" id="f-mengetahui" class="field" value="" />
+        </div>
+      </div>
+      <div class="mt-4">
+        <div class="mb-2 text-sm font-bold">Data Pekerjaan</div>
+        <div id="dr-rows"></div>
+        <div class="mt-2">${actionBtn('add-row')}</div>
+      </div>`,
+    footer: `
+      <div class="flex flex-wrap gap-2">
+        <button class="btn-slate px-4 py-2" type="button" data-action="close-drawer">Batal</button>
+      </div>
+      ${actionBtn('save-new')}`,
+  });
+  addDrRow();
+}
+
+export async function saveCreate(): Promise<void> {
+  if (!validateRequired([{ id: 'f-driver', label: 'Driver' }])) return;
+
+  const val = (id: string): string => ($(`f-${id}`) as HTMLInputElement | null)?.value?.trim() || '';
+  const container = $('dr-rows');
+  const rowCount = container ? container.querySelectorAll('[data-dr-row]').length : 0;
+  const rows: { start: string; finish: string; nopol: string; ijn: string; namaUser: string; km: string; solar: string; uraian: string }[] = [];
+  for (let i = 0; i < rowCount; i++) {
+    const g = (sel: string) => ($(`dr-r${i}-${sel}`) as HTMLInputElement | null)?.value?.trim() || '';
+    const r = { start: g('start'), finish: g('finish'), nopol: g('nopol'), ijn: g('ijn'), namaUser: g('namaUser'), km: g('km'), solar: g('solar'), uraian: g('uraian') };
+    if (r.start || r.finish || r.nopol || r.ijn || r.namaUser || r.uraian || r.km || r.solar) rows.push(r);
+  }
+
+  setPageLoading(true);
+  toast(MSG.saving);
+  try {
+    await api.saveDr({ tanggal: val('tanggal') || todayISO(), hari: val('hari'), id: val('id'), driver: val('driver'), mengetahui: val('mengetahui'), rows });
+    toast(MSG.saved);
+    drawer.close();
+    await refresh();
+  } catch (error) {
+    report(error);
+  } finally {
+    setPageLoading(false);
+  }
 }
 
 

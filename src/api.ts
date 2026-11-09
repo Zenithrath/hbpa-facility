@@ -235,6 +235,19 @@ export const api = {
     lines: InventarisLineInput[];
   }) => write('saveInventaris', body).then(() => invalidate('getInventarisData')),
 
+  createInventaris: (body: {
+    noDok: string;
+    nama: string;
+    kontak: string;
+    tglPinjam: string;
+    tglKembali: string;
+    keperluan: string;
+    status: string;
+    tglKembaliAktual: string;
+    catatan: string;
+    lines: { n: string; barang: string; qty: string; kondisiAmbil: string; kondisiKembali: string }[];
+  }) => write('createInventaris', body).then(() => invalidate('getInventarisData')),
+
   deleteInventaris: (rowId: number) =>
     writeParams('deleteInventaris', { rowId }).then(() => invalidate('getInventarisData')),
 
@@ -251,6 +264,8 @@ export const api = {
 
   saveDr: (body: {
     tanggal: string;
+    hari?: string;
+    id?: string;
     driver: string;
     mengetahui: string;
     rows: {

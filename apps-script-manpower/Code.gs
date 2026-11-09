@@ -85,7 +85,9 @@ function dispatch_(action, param) {
     case 'getCompletions':   return listRows_('completion', param);
     case 'getCompletion':    return getRow_('completion', rowId_(param));
     case 'saveRequest':      return saveRow_('requests', param);
+    case 'createRequest':    return createRow_('requests', param);
     case 'saveCompletion':   return saveRow_('completion', param);
+    case 'createCompletion': return createRow_('completion', param);
     case 'deleteRequest':    return deleteRow_('requests', param);
     case 'deleteCompletion': return deleteRow_('completion', param);
     default: throw new Error('Aksi tidak dikenal: ' + action);
@@ -357,6 +359,48 @@ function saveRow_(which, body) {
   if (!lock.tryLock(20000)) throw new Error('Server sedang sibuk. Coba lagi sebentar.');
   try {
     var byKey = columnMap_(sh, which);
+    saveVirtualFields_(sh, rowId, which, fields);
+    specs_(which).forEach(function (f) {
+      if (f.virtual) return;
+      if (fields[f.key] === undefined || fields[f.key] === null) return;
+      var col = byKey[f.key];
+      if (!col) {
+        col = sh.getLastColumn() + 1;
+        sh.getRange(1, col).setValue(f.label).setFontWeight('bold');
+        byKey[f.key] = col;
+      }
+      sh.getRange(rowId, col).setValue(String(fields[f.key] == null ? '' : fields[f.key]));
+    });
+  } finally {
+    lock.releaseLock();
+  }
+  return getRow_(which, rowId);
+}
+
+function createRow_(which, body) {
+  body = body || {};
+  var fields = body.fields && typeof body.fields === 'object' ? body.fields : body;
+  if (which === 'requests' && !String(fields.requesterName || '').trim()) {
+    throw new Error('Requester Name wajib diisi.');
+  }
+  if (which === 'completion' && !String(fields.reportedBy || '').trim() && !String(fields.jobName || '').trim()) {
+    throw new Error('Reported By atau Job Name wajib diisi.');
+  }
+  if (JSON.stringify(fields).length > MR_CONFIG.maxBodyBytes) {
+    throw new Error('Payload terlalu besar.');
+  }
+
+  var sh = sheet_(which);
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) throw new Error('Server sedang sibuk. Coba lagi sebentar.');
+  var rowId = 0;
+  try {
+    var lastCol = sh.getLastColumn();
+    sh.appendRow(Array.from({ length: Math.max(lastCol, 1) }, function () { return ''; }));
+    rowId = sh.getLastRow();
+
+    var byKey = columnMap_(sh, which);
+    if (!fields.timestamp) fields.timestamp = new Date();
     saveVirtualFields_(sh, rowId, which, fields);
     specs_(which).forEach(function (f) {
       if (f.virtual) return;

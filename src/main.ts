@@ -32,6 +32,8 @@ import {
   printChecklist as clPrintChecklist,
   remove as clRemove,
   saveEdit as clSaveEdit,
+  openAdd as clOpenAdd,
+  saveNew as clSaveNew,
 } from './pages/checklist-list';
 import { manpowerRequisitionPage } from './manpower/requisition';
 import { jobCompletionPage } from './manpower/completion';
@@ -105,6 +107,7 @@ const TRANSPORT_PAGE: Page = {
     <div class="space-y-4">
       <div class="card flex flex-col gap-3 p-4 sm:flex-row">
         ${searchBar({ id: 'q', placeholder: 'Cari nama, no., divisi, tujuan, plat...', extra: 'flex-1' })}
+        ${actionBtn('add', { extra: 'shrink-0 justify-center' })}
       </div>
 
       <p id="count" class="text-[11px] text-surface-400"></p>
@@ -137,6 +140,7 @@ const INVENTARIS_PAGE: Page = {
 
       <div class="card flex flex-col gap-3 p-4 sm:flex-row">
         ${searchBar({ id: 'inv-q', placeholder: 'Cari nama, no. dokumen, kontak, atau barang...', extra: 'flex-1' })}
+        ${actionBtn('add', { extra: 'shrink-0 justify-center' })}
       </div>
 
       <p id="inv-count" class="text-[11px] text-surface-400"></p>
@@ -180,6 +184,7 @@ const DAILY_REPORT_PAGE: Page = {
     <div class="space-y-4">
       <div class="card flex flex-col gap-3 p-4 sm:flex-row">
         ${searchBar({ id: 'dr-q', placeholder: 'Cari driver, tanggal, no. plat, atau uraian...', extra: 'flex-1' })}
+        ${actionBtn('add', { extra: 'shrink-0 justify-center' })}
       </div>
 
       <div class="flex flex-wrap items-center justify-between gap-2">
@@ -522,6 +527,8 @@ const GLOBAL_ACTIONS: Record<string, Handler> = {
 const PAGE_ACTIONS: Record<PageKey, Record<string, Handler>> = {
   transport: {
     detail: (_el, id) => transport.openDrawer(id),
+    add: () => transport.openAddDrawer(),
+    'save-new': () => transport.saveCreate(),
     save: (_el, id) => transport.save(id),
     print: (el, id) => {
     const fromDrawer = el.dataset.from === 'drawer';
@@ -541,6 +548,8 @@ const PAGE_ACTIONS: Record<PageKey, Record<string, Handler>> = {
 
   inventaris: {
   detail: (_el, id) => inventaris.openDrawer(id),
+  add: () => inventaris.openAddDrawer(),
+  'save-new': () => inventaris.saveCreate(),
   save: (_el, id) => inventaris.save(id),
   delete: (_el, id) => inventaris.remove(id),
   print: (_el, id) => {
@@ -556,11 +565,14 @@ const PAGE_ACTIONS: Record<PageKey, Record<string, Handler>> = {
     );
   },
   'all-good': () => inventaris.setAllGood(),
+  'add-row': () => inventaris.addInventarisItemRow(),
   status: (el) => inventaris.onStatusChange(el as HTMLSelectElement),
   },
 
   daily: {
   detail: (_el, id) => dailyReport.openDrawer(id),
+  add: () => dailyReport.openAddDrawer(),
+  'save-new': () => dailyReport.saveCreate(),
   save: (_el, id) => dailyReport.saveDrEdit(id),
   delete: (_el, id) => dailyReport.remove(id),
   'add-row': () => dailyReport.addDrRow(),
@@ -581,12 +593,16 @@ const PAGE_ACTIONS: Record<PageKey, Record<string, Handler>> = {
   'checklist-list': {
   detail: (_el, id) => clOpenDetail(id),
   save: () => clSaveEdit(),
+  'save-new': () => clSaveNew(),
+  add: () => clOpenAdd(),
   delete: (_el, id) => clRemove(id),
   print: (_el, id) => clPrintChecklist(id),
   },
 
   'manpower-requisition': {
   detail: (_el, id) => manpowerRequisitionPage.openDrawer(id),
+  add: () => manpowerRequisitionPage.openAdd(),
+  'save-new': () => manpowerRequisitionPage.saveNew(),
   save: (_el, id) => manpowerRequisitionPage.save(id),
   delete: (_el, id) => manpowerRequisitionPage.remove(id),
   print: (_el, id) => manpowerRequisitionPage.printRequest(id),
@@ -598,6 +614,8 @@ const PAGE_ACTIONS: Record<PageKey, Record<string, Handler>> = {
 
   'job-completion': {
   detail: (_el, id) => jobCompletionPage.openDrawer(id),
+  add: () => jobCompletionPage.openAdd(),
+  'save-new': () => jobCompletionPage.saveNew(),
   save: (_el, id) => jobCompletionPage.save(id),
   delete: (_el, id) => jobCompletionPage.remove(id),
   print: (_el, id) => jobCompletionPage.printRequest(id),

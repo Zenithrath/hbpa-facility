@@ -144,6 +144,12 @@ export const manpowerApi = {
   saveCompletion: (rowId: number, sig: string, fields: Record<string, string>) =>
     write<JobCompletion>('saveCompletion', { rowId, sig, fields }),
 
+  createRequest: (fields: Record<string, string>) =>
+    write<ManpowerRequest>('createRequest', { fields }),
+
+  createCompletion: (fields: Record<string, string>) =>
+    write<JobCompletion>('createCompletion', { fields }),
+
   deleteRequest: (rowId: number, sig: string) =>
     write<{ deleted: boolean }>('deleteRequest', { rowId, sig }),
 
